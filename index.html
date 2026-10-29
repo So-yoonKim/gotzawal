@@ -69,7 +69,7 @@
         <div id="about">곶자왈은 용암이 흘러 굳은 돌밭 위에 자란 제주의 숲이에요.<br>돌 틈의 비밀을 찾아 숲을 가로질러 보세요!</div>
     </div>
 
-    <div id="topbtns"><button class="round" id="btnPause" title="일시정지">❚❚</button><button class="round" id="btnFull" title="전체화면">⛶</button></div>
+    <div id="topbtns"><button class="round" id="btnSnd" title="소리 켜기/끄기">🔊</button><button class="round" id="btnPause" title="일시정지">❚❚</button><button class="round" id="btnFull" title="전체화면">⛶</button></div>
     <div id="toast"></div>
     <div id="touch">
         <div id="dpad"><button class="tbtn move" id="tLeft">◀</button><button class="tbtn move" id="tRight">▶</button></div>
@@ -166,7 +166,7 @@
             const inside = ev.clientX >= r.left - 30 && ev.clientX <= r.right + 30 && ev.clientY >= r.top - 40 && ev.clientY <= r.bottom + 40
             touch.left = inside && ev.clientX < mid; touch.right = inside && ev.clientX >= mid
         }
-        dpad.addEventListener("pointerdown", (ev) => { ev.preventDefault(); dpad.setPointerCapture(ev.pointerId); dpadSet(ev) })
+        dpad.addEventListener("pointerdown", (ev) => { ev.preventDefault(); try { dpad.setPointerCapture(ev.pointerId) } catch (e) {} dpadSet(ev) })
         dpad.addEventListener("pointermove", (ev) => { if (ev.buttons || ev.pressure > 0) dpadSet(ev) })
         const dpadOff = () => { touch.left = touch.right = false }
         dpad.addEventListener("pointerup", dpadOff); dpad.addEventListener("pointercancel", dpadOff)
@@ -177,6 +177,83 @@
         cv.addEventListener("pointerup", tapEnd); cv.addEventListener("pointercancel", tapEnd)
         if (matchMedia("(pointer: coarse)").matches || "ontouchstart" in window || innerWidth < 900) document.getElementById("touch").style.display = "block"
 
+        // ====================================================== 소리 (효과음 · 배경음악 · 음성 안내)
+        const AUD = { ctx: null, sfxBus: null, musicBus: null, music: true, sfx: true, voice: true }
+        try { Object.assign(AUD, JSON.parse(localStorage.getItem("gotjawalAudio") || "{}")) } catch (e) {}
+        const saveAud = () => { try { localStorage.setItem("gotjawalAudio", JSON.stringify({ music: AUD.music, sfx: AUD.sfx, voice: AUD.voice })) } catch (e) {} }
+        const initAudio = () => {
+            if (!AUD.ctx) {
+                const C = window.AudioContext || window.webkitAudioContext
+                if (!C) return
+                const c = AUD.ctx = new C()
+                AUD.sfxBus = c.createGain(); AUD.sfxBus.gain.value = 0.8; AUD.sfxBus.connect(c.destination)
+                AUD.musicBus = c.createGain(); AUD.musicBus.gain.value = 0.16; AUD.musicBus.connect(c.destination)
+            }
+            if (AUD.ctx.state === "suspended") AUD.ctx.resume()
+        }
+        const tone = (f, d, o = {}) => {
+            if (!AUD.ctx) return
+            const c = AUD.ctx, t = c.currentTime + (o.at || 0), osc = c.createOscillator(), g = c.createGain()
+            osc.type = o.type || "sine"; osc.frequency.setValueAtTime(f, t)
+            if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + d)
+            g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(o.vol || 0.3, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + d)
+            osc.connect(g); g.connect(o.bus || AUD.sfxBus); osc.start(t); osc.stop(t + d + 0.05)
+        }
+        let noiseBuf = null
+        const noise = (d, vol, freq) => {
+            if (!AUD.ctx) return
+            const c = AUD.ctx, t = c.currentTime
+            if (!noiseBuf) { noiseBuf = c.createBuffer(1, c.sampleRate * 0.3, c.sampleRate); const a = noiseBuf.getChannelData(0); for (let i = 0; i < a.length; i++) a[i] = Math.random() * 2 - 1 }
+            const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain()
+            src.buffer = noiseBuf; f.type = "lowpass"; f.frequency.value = freq
+            g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d)
+            src.connect(f); f.connect(g); g.connect(AUD.sfxBus); src.start(t); src.stop(t + d)
+        }
+        const seq = (notes, step, o) => notes.forEach((f, i) => tone(f, step * 2.2, { ...o, at: i * step }))
+        const sfx = {
+            jump: () => AUD.sfx && tone(300, 0.17, { type: "square", to: 620, vol: 0.1 }),
+            land: () => AUD.sfx && noise(0.09, 0.22, 380),
+            step: () => AUD.sfx && noise(0.05, 0.1, 1100),
+            acorn: () => { if (!AUD.sfx) return; tone(880, 0.1, { type: "triangle", vol: 0.25 }); tone(1320, 0.2, { type: "triangle", vol: 0.25, at: 0.07 }) },
+            treasure: () => AUD.sfx && seq([523, 659, 784, 1047, 1319], 0.09, { type: "triangle", vol: 0.25 }),
+            hurt: () => { if (!AUD.sfx) return; tone(240, 0.32, { type: "sawtooth", to: 90, vol: 0.2 }); noise(0.15, 0.3, 700) },
+            fall: () => AUD.sfx && tone(520, 0.8, { type: "sine", to: 55, vol: 0.28 }),
+            win: () => AUD.sfx && seq([523, 659, 784, 659, 784, 1047], 0.14, { type: "triangle", vol: 0.28 }),
+            over: () => AUD.sfx && seq([392, 330, 262, 196], 0.2, { type: "sine", vol: 0.28 }),
+            click: () => AUD.sfx && tone(720, 0.06, { type: "square", vol: 0.07 })
+        }
+        // 배경음악: 잔잔한 펜타토닉 아르페지오 (C - Am - F - G)
+        const PROG = [[261.6, 329.6, 392], [220, 261.6, 329.6], [174.6, 220, 261.6], [196, 246.9, 293.7]]
+        let mStep = 0, mNext = 0, mTimer = null
+        const musicTick = () => {
+            const c = AUD.ctx; if (!c) return
+            if (mNext < c.currentTime) mNext = c.currentTime + 0.05
+            while (mNext < c.currentTime + 0.6) {
+                const ch = PROG[Math.floor(mStep / 8) % 4], n = mStep % 8, at = mNext - c.currentTime
+                tone(ch[[0, 1, 2, 1, 2, 1, 2, 1][n]] * 2, 0.55, { vol: 0.4, bus: AUD.musicBus, at })
+                if (n === 0) tone(ch[0] / 2, 2.6, { type: "triangle", vol: 0.55, bus: AUD.musicBus, at })
+                mNext += 0.36; mStep++
+            }
+        }
+        const syncMusic = () => {
+            const want = state === "play" && AUD.music && AUD.ctx
+            if (want && !mTimer) { mNext = 0; mTimer = setInterval(musicTick, 200); musicTick() }
+            if (!want && mTimer) { clearInterval(mTimer); mTimer = null }
+        }
+        const speak = (txt) => {
+            if (!AUD.voice || !window.speechSynthesis) return
+            try {
+                speechSynthesis.cancel()
+                const u = new SpeechSynthesisUtterance(txt); u.lang = "ko-KR"
+                const v = speechSynthesis.getVoices().find((x) => x.lang && x.lang.toLowerCase().replace("_", "-").startsWith("ko"))
+                if (v) u.voice = v
+                speechSynthesis.speak(u)
+            } catch (e) {}
+        }
+        const stopVoice = () => { try { window.speechSynthesis && speechSynthesis.cancel() } catch (e) {} }
+        addEventListener("pointerdown", initAudio); addEventListener("keydown", initAudio)
+        document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest("button")) { initAudio(); sfx.click() } })
+
         // ====================================================== UI
         const $ = (id) => document.getElementById(id)
         const toast = (msg, ms = 4200) => { const t = $("toast"); t.textContent = msg; t.classList.add("show"); toastTimer = ms; clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), ms) }
@@ -186,33 +263,44 @@
             reset(); state = "play"
             $("title").style.display = "none"; $("about").style.display = "none"; $("topbtns").style.display = "flex"; hidePanel()
             toast("← → 이동 · ↑ / Space 점프 (길게 누르면 더 높이!) · 도토리를 모으고 보물 4개를 찾아보세요", 5200)
+            initAudio(); syncMusic(); speak("곶자왈 탐험을 시작해요! 보물 네 개를 찾아보세요.")
         }
         const toTitle = () => {
-            reset(); state = "title"; hidePanel(); $("toast").classList.remove("show")
+            reset(); state = "title"; hidePanel(); $("toast").classList.remove("show"); syncMusic(); stopVoice()
             $("title").style.display = "flex"; $("about").style.display = "block"; $("topbtns").style.display = "none"
         }
         const togglePause = () => {
             if (state === "play") { state = "pause"; showPanel(`<h2>일시정지</h2><button class="clay play" id="bResume">계속하기</button><button class="clay alt" id="bTitle">처음 화면</button>`)
                 $("bResume").onclick = togglePause; $("bTitle").onclick = toTitle }
             else if (state === "pause") { state = "play"; hidePanel() }
+            syncMusic()
         }
         const settings = () => {
             showPanel(`<h2>Settings</h2>
                 <p>하트 개수</p><div class="row"><button class="clay alt pill ${maxHearts === 3 ? "on" : ""}" id="h3">3개</button><button class="clay alt pill ${maxHearts === 5 ? "on" : ""}" id="h5">5개 (쉬움)</button></div>
+                <p>소리</p><div class="row"><button class="clay alt pill ${AUD.music ? "on" : ""}" id="sMusic">음악</button><button class="clay alt pill ${AUD.sfx ? "on" : ""}" id="sSfx">효과음</button><button class="clay alt pill ${AUD.voice ? "on" : ""}" id="sVoice">음성</button></div>
                 <p>조작: ← → 이동 · ↑ / Space 점프 (길게 누르면 높이 점프)<br>Esc 또는 P: 일시정지</p>
                 <button class="clay play" id="bBack">닫기</button>`)
             $("h3").onclick = () => { maxHearts = 3; settings() }; $("h5").onclick = () => { maxHearts = 5; settings() }
+            const flip = (id, k) => { $(id).onclick = () => { AUD[k] = !AUD[k]; saveAud(); initAudio(); syncMusic(); if (k === "voice") { AUD.voice ? speak("음성 안내를 켰어요") : stopVoice() } updSnd(); settings() } }
+            flip("sMusic", "music"); flip("sSfx", "sfx"); flip("sVoice", "voice")
             $("bBack").onclick = hidePanel
         }
+        const updSnd = () => { $("btnSnd").textContent = AUD.music || AUD.sfx || AUD.voice ? "🔊" : "🔇" }
+        $("btnSnd").onclick = () => {
+            const on = !(AUD.music || AUD.sfx || AUD.voice)
+            AUD.music = AUD.sfx = AUD.voice = on; saveAud(); initAudio(); syncMusic(); if (!on) stopVoice(); updSnd()
+        }
+        updSnd()
         $("btnPlay").onclick = startGame; $("btnSettings").onclick = settings; $("btnPause").onclick = togglePause
         $("btnFull").onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.() }
         const gameOver = () => {
-            state = "over"
+            state = "over"; syncMusic(); sfx.over(); speak("쓰러졌어요. 다시 도전해 봐요!")
             showPanel(`<h2>쓰러졌어요…</h2><p>도토리 ${score}개 · 보물 ${got.size}/4<br>곶자왈 돌길은 험하지만 다시 도전해 봐요!</p><button class="clay play" id="bRetry">다시 도전</button><button class="clay alt" id="bTitle">처음 화면</button>`)
             $("bRetry").onclick = startGame; $("bTitle").onclick = toTitle
         }
         const win = () => {
-            state = "win"
+            state = "win"; syncMusic(); sfx.win(); speak("탐험 완료! 곶자왈은 빗물을 땅속으로 보내 지하수를 채우는 제주의 허파 같은 숲이에요.")
             const names = TREASURES.filter((t) => got.has(t.type)).map((t) => t.name).join(", ") || "없음"
             showPanel(`<h2>🌿 탐험 완료!</h2><p>도토리 ${score}개 · 보물 ${got.size}/4<br>찾은 보물: ${names}<br><br>곶자왈은 빗물을 땅속으로 보내 지하수를 채우는 제주의 허파 같은 숲이에요.</p><button class="clay play" id="bRetry">다시 탐험</button><button class="clay alt" id="bTitle">처음 화면</button>`)
             $("bRetry").onclick = startGame; $("bTitle").onclick = toTitle
@@ -222,6 +310,7 @@
         const damage = () => {
             if (P.inv > 0) return
             hearts--; P.inv = 100; P.stun = 14; P.vx = -P.dir * 7; P.vy = -9; P.onGround = false
+            if (hearts > 0) sfx.hurt()
             for (let i = 0; i < 8; i++) sparks.push({ x: P.x, y: P.y - 30, vx: (Math.random() - .5) * 6, vy: -Math.random() * 5, life: 30, c: "#ff7a4a" })
             if (hearts <= 0) gameOver()
         }
@@ -233,7 +322,8 @@
             else { P.vx += (ax * 4.4 - P.vx) * 0.25; if (ax) P.dir = ax }
             if (P.buffer > 0) P.buffer--
             P.coyote = P.onGround ? 7 : Math.max(0, P.coyote - 1)
-            if (P.buffer > 0 && P.coyote > 0) { P.vy = -13.5; P.onGround = false; P.coyote = 0; P.buffer = 0 }
+            if (P.buffer > 0 && P.coyote > 0) { P.vy = -13.5; P.onGround = false; P.coyote = 0; P.buffer = 0; sfx.jump() }
+            const wasAir = !P.onGround, fallV = P.vy
             P.vy = Math.min(18, P.vy + (jumpHeld && P.vy < 0 ? 0.45 : 0.85))
             P.x = Math.max(-380, P.x + P.vx)
             const prev = P.y; P.y += P.vy; P.onGround = false
@@ -243,10 +333,14 @@
                     if (s.ground && P.x > s.x0 + 70 && P.x < s.x1 - 70) P.safeX = P.x
                 }
             }
-            if (P.onGround && Math.abs(P.vx) > 0.5) P.walk += Math.abs(P.vx) * 0.09
+            if (P.onGround && wasAir && fallV > 6) sfx.land()
+            if (P.onGround && Math.abs(P.vx) > 0.5) {
+                const w0 = Math.floor(P.walk / 1.7); P.walk += Math.abs(P.vx) * 0.09
+                if (Math.floor(P.walk / 1.7) !== w0) sfx.step()
+            }
             if (P.inv > 0) P.inv--
             if (P.y > H + 140) {                                  // 절벽(숨골)에 떨어짐
-                hearts--
+                hearts--; sfx.fall()
                 if (hearts <= 0) { gameOver(); return }
                 P.x = P.safeX; P.y = GY; P.vx = P.vy = 0; P.inv = 100
             }
@@ -256,11 +350,11 @@
                 if (body.x < r.x + r.w && body.x + body.w > r.x && body.y < r.y + r.h && body.y + body.h > r.y) damage()
             }
             for (const a of acorns) if (!a.taken && Math.hypot(a.x - P.x, a.y - (P.y - 30)) < 30) {
-                a.taken = true; score++
+                a.taken = true; score++; sfx.acorn()
                 for (let i = 0; i < 5; i++) sparks.push({ x: a.x, y: a.y, vx: (Math.random() - .5) * 4, vy: -Math.random() * 4, life: 24, c: "#ffd45a" })
             }
             for (const t of treasures) if (!t.taken && Math.hypot(t.x - P.x, t.y - (P.y - 30)) < 36) {
-                t.taken = true; got.add(t.type); toast(t.fact, 5200)
+                t.taken = true; got.add(t.type); toast(t.fact, 5200); sfx.treasure(); speak(t.fact)
                 for (let i = 0; i < 14; i++) sparks.push({ x: t.x, y: t.y, vx: (Math.random() - .5) * 8, vy: -Math.random() * 7, life: 40, c: "#fff3a0" })
             }
             for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.vy += 0.3; s.life-- }
