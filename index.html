@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>곶자왈 탐험 — Jeju Gotjawal</title>
+    <title>곶자왈 탐험 3D — Jeju Gotjawal</title>
     <style>
         :root { --moss: #7ccf4b; --moss-dark: #2f6f2a; --orange: #e8641f; --cream: #fbe3bf; }
         html, body { margin: 0; height: 100%; overflow: hidden; background: #7fb7e8; user-select: none; -webkit-user-select: none; touch-action: none;
@@ -54,14 +54,26 @@
             background: radial-gradient(ellipse at 30% 20%, #ff9a55, var(--orange) 60%, #c4480f); box-shadow: inset 0 5px 7px rgba(255,255,255,.35), 0 6px 0 #9c3f10, 0 12px 16px rgba(0,0,0,.3); }
         .tbtn.move { background: radial-gradient(ellipse at 30% 20%, #6e8c6e, #35523a 65%); box-shadow: inset 0 5px 7px rgba(255,255,255,.3), 0 6px 0 #1b2f20, 0 12px 16px rgba(0,0,0,.3); }
         .tbtn:active { transform: translateY(4px); }
-    </style>
+        #vig { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 55%, transparent 52%, rgba(60, 35, 10, .38) 100%); }
+        #hud { position: fixed; inset: 0; display: none; pointer-events: none; }
+        #hHearts { position: absolute; left: 14px; top: 10px; font-size: 30px; line-height: 46px; letter-spacing: 2px; }
+        #hHearts span { color: rgba(255,255,255,.5); text-shadow: 0 2px 0 rgba(90,50,30,.5); } #hHearts span.on { color: #ff4b5c; }
+        #hMid { position: absolute; left: 50%; top: 62px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px;
+            background: rgba(255, 244, 220, .78); border-radius: 22px; padding: 6px 16px 9px; box-shadow: inset 0 3px 4px #fff, 0 4px 0 #b99560, 0 8px 14px rgba(0,0,0,.25); color: #5a3a1f; }
+        #hRow { display: flex; align-items: center; gap: 14px; font-weight: 900; font-size: 20px; }
+        #hSlots { display: flex; gap: 6px; } #hSlots i { font-style: normal; font-size: 20px; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            background: #e6dcc6; filter: grayscale(1); opacity: .45; } #hSlots i.have { background: #ffe9a8; filter: none; opacity: 1; box-shadow: 0 0 10px #ffd45a; }
+        #hBar { width: 180px; height: 8px; border-radius: 4px; background: #e6dcc6; overflow: hidden; } #hFill { display: block; height: 100%; width: 0; background: #7ccf4b; border-radius: 4px; }
+        #toast { top: 150px; }    </style>
 </head>
 <body>
     <canvas id="c"></canvas>
+    <div id="vig"></div>
+    <div id="hud"><div id="hHearts"></div><div id="hMid"><div id="hRow"><span>🌰 <b id="hScore">0</b></span><div id="hSlots"></div></div><div id="hBar"><i id="hFill"></i></div></div></div>
 
     <div id="title" class="layer">
         <h1>곶자왈<br>탐험</h1>
-        <div class="sub">DEMO · JEJU GOTJAWAL</div>
+        <div class="sub">3D DEMO · JEJU GOTJAWAL</div>
         <div id="menu">
             <button class="clay play" id="btnPlay">▶ Play</button>
             <button class="clay alt" id="btnSettings">⚙ Settings</button>
@@ -77,21 +89,20 @@
     </div>
     <div id="panel" class="layer"><div class="card" id="card"></div></div>
 
-    <script>
+    <div id="loadfail" style="display:none;position:fixed;inset:0;z-index:99;background:rgba(40,70,40,.94);color:#fff;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;font:700 18px 'Malgun Gothic',sans-serif">
+        <div>3D 화면을 불러오지 못했어요 😢</div>
+        <div style="font-size:14px;font-weight:400;line-height:1.7">인터넷 연결(three.js 라이브러리)이나 브라우저의 WebGL 설정을 확인하고 새로고침해 주세요.<br>안 되면 2D 버전으로 플레이할 수 있어요.</div>
+        <a href="gotjawal.html" style="color:#ffe9a8">2D 버전으로 열기</a>
+    </div>
+    <script>setTimeout(function () { if (!window.__g3dReady) document.getElementById("loadfail").style.display = "flex" }, 8000)</script>
+    <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+    <script type="module">
+        import * as THREE from "three"
+        import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js"
         // ====================================================== 기본 설정
-        const cv = document.getElementById("c"), ctx = cv.getContext("2d")
+        const cv = document.getElementById("c")
         const H = 540, GY = 440, LEN = 7100, GOAL = 6800, START_X = 300
-        let S = 1, DPR = 1, W = 960, VH = H, OY = 0
-        const resize = () => {
-            DPR = Math.min(devicePixelRatio || 1, 2)
-            S = Math.min(innerHeight / H, innerWidth / 640)
-            W = innerWidth / S; VH = innerHeight / S
-            // 터치 화면: 조작 버튼에 가리지 않도록 바닥선을 화면 아래에서 1/3 높이로 올림
-            const touchUI = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window || innerWidth < 900
-            OY = touchUI ? VH * 2 / 3 - GY : VH - H
-            cv.width = innerWidth * DPR; cv.height = innerHeight * DPR
-        }
-        addEventListener("resize", resize); resize()
+
         const rnd = (n) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v) }
 
         // ====================================================== 레벨 데이터
@@ -178,9 +189,9 @@
         if (matchMedia("(pointer: coarse)").matches || "ontouchstart" in window || innerWidth < 900) document.getElementById("touch").style.display = "block"
 
         // ====================================================== 소리 (효과음 · 배경음악 · 음성 안내)
-        const AUD = { ctx: null, sfxBus: null, musicBus: null, music: true, sfx: true, voice: true }
+        const AUD = { ctx: null, sfxBus: null, musicBus: null, music: true, sfx: true }
         try { Object.assign(AUD, JSON.parse(localStorage.getItem("gotjawalAudio") || "{}")) } catch (e) {}
-        const saveAud = () => { try { localStorage.setItem("gotjawalAudio", JSON.stringify({ music: AUD.music, sfx: AUD.sfx, voice: AUD.voice })) } catch (e) {} }
+        const saveAud = () => { try { localStorage.setItem("gotjawalAudio", JSON.stringify({ music: AUD.music, sfx: AUD.sfx })) } catch (e) {} }
         const initAudio = () => {
             if (!AUD.ctx) {
                 const C = window.AudioContext || window.webkitAudioContext
@@ -211,18 +222,18 @@
         }
         const seq = (notes, step, o) => notes.forEach((f, i) => tone(f, step * 2.2, { ...o, at: i * step }))
         const sfx = {
-            jump: () => AUD.sfx && tone(300, 0.17, { type: "square", to: 620, vol: 0.1 }),
-            land: () => AUD.sfx && noise(0.09, 0.22, 380),
-            step: () => AUD.sfx && noise(0.05, 0.1, 1100),
-            acorn: () => { if (!AUD.sfx) return; tone(880, 0.1, { type: "triangle", vol: 0.25 }); tone(1320, 0.2, { type: "triangle", vol: 0.25, at: 0.07 }) },
-            treasure: () => AUD.sfx && seq([523, 659, 784, 1047, 1319], 0.09, { type: "triangle", vol: 0.25 }),
-            hurt: () => { if (!AUD.sfx) return; tone(240, 0.32, { type: "sawtooth", to: 90, vol: 0.2 }); noise(0.15, 0.3, 700) },
-            fall: () => AUD.sfx && tone(520, 0.8, { type: "sine", to: 55, vol: 0.28 }),
-            win: () => AUD.sfx && seq([523, 659, 784, 659, 784, 1047], 0.14, { type: "triangle", vol: 0.28 }),
-            over: () => AUD.sfx && seq([392, 330, 262, 196], 0.2, { type: "sine", vol: 0.28 }),
-            click: () => AUD.sfx && tone(720, 0.06, { type: "square", vol: 0.07 })
+            jump: () => { if (!AUD.sfx) return; tone(380, 0.22, { to: 980, vol: 0.2 }); tone(760, 0.18, { type: "triangle", to: 1500, vol: 0.08, at: 0.03 }) },
+            land: () => AUD.sfx && tone(260, 0.1, { to: 150, vol: 0.18 }),
+            step: () => AUD.sfx && tone(900 + Math.random() * 250, 0.045, { type: "triangle", vol: 0.07 }),
+            acorn: () => { if (!AUD.sfx) return; tone(1175, 0.1, { type: "triangle", vol: 0.22 }); tone(1568, 0.22, { type: "triangle", vol: 0.22, at: 0.07 }) },
+            treasure: () => AUD.sfx && seq([784, 988, 1175, 1568, 1976, 2349], 0.08, { type: "triangle", vol: 0.2 }),
+            hurt: () => { if (!AUD.sfx) return; tone(700, 0.3, { to: 320, vol: 0.22 }); tone(350, 0.3, { to: 200, vol: 0.12 }) },
+            fall: () => AUD.sfx && tone(1000, 0.7, { to: 180, vol: 0.2 }),
+            win: () => AUD.sfx && seq([523, 659, 784, 1047, 784, 1047, 1319], 0.12, { type: "triangle", vol: 0.24 }),
+            over: () => AUD.sfx && seq([659, 587, 523, 440], 0.2, { type: "sine", vol: 0.25 }),
+            click: () => AUD.sfx && tone(900, 0.07, { to: 1400, vol: 0.12 })
         }
-        // 배경음악: 잔잔한 펜타토닉 아르페지오 (C - Am - F - G)
+        // 배경음악: 오르골 같은 통통 튀는 아르페지오 (C - Am - F - G)
         const PROG = [[261.6, 329.6, 392], [220, 261.6, 329.6], [174.6, 220, 261.6], [196, 246.9, 293.7]]
         let mStep = 0, mNext = 0, mTimer = null
         const musicTick = () => {
@@ -230,9 +241,9 @@
             if (mNext < c.currentTime) mNext = c.currentTime + 0.05
             while (mNext < c.currentTime + 0.6) {
                 const ch = PROG[Math.floor(mStep / 8) % 4], n = mStep % 8, at = mNext - c.currentTime
-                tone(ch[[0, 1, 2, 1, 2, 1, 2, 1][n]] * 2, 0.55, { vol: 0.4, bus: AUD.musicBus, at })
+                tone(ch[[0, 1, 2, 1, 2, 1, 2, 1][n]] * (n % 4 === 3 ? 4 : 2), 0.3, { type: "triangle", vol: 0.5, bus: AUD.musicBus, at })
                 if (n === 0) tone(ch[0] / 2, 2.6, { type: "triangle", vol: 0.55, bus: AUD.musicBus, at })
-                mNext += 0.36; mStep++
+                mNext += 0.3; mStep++
             }
         }
         const syncMusic = () => {
@@ -240,17 +251,6 @@
             if (want && !mTimer) { mNext = 0; mTimer = setInterval(musicTick, 200); musicTick() }
             if (!want && mTimer) { clearInterval(mTimer); mTimer = null }
         }
-        const speak = (txt) => {
-            if (!AUD.voice || !window.speechSynthesis) return
-            try {
-                speechSynthesis.cancel()
-                const u = new SpeechSynthesisUtterance(txt); u.lang = "ko-KR"
-                const v = speechSynthesis.getVoices().find((x) => x.lang && x.lang.toLowerCase().replace("_", "-").startsWith("ko"))
-                if (v) u.voice = v
-                speechSynthesis.speak(u)
-            } catch (e) {}
-        }
-        const stopVoice = () => { try { window.speechSynthesis && speechSynthesis.cancel() } catch (e) {} }
         addEventListener("pointerdown", initAudio); addEventListener("keydown", initAudio)
         document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest("button")) { initAudio(); sfx.click() } })
 
@@ -263,10 +263,10 @@
             reset(); state = "play"
             $("title").style.display = "none"; $("about").style.display = "none"; $("topbtns").style.display = "flex"; hidePanel()
             toast("← → 이동 · ↑ / Space 점프 (길게 누르면 더 높이!) · 도토리를 모으고 보물 4개를 찾아보세요", 5200)
-            initAudio(); syncMusic(); speak("곶자왈 탐험을 시작해요! 보물 네 개를 찾아보세요.")
+            initAudio(); syncMusic()
         }
         const toTitle = () => {
-            reset(); state = "title"; hidePanel(); $("toast").classList.remove("show"); syncMusic(); stopVoice()
+            reset(); state = "title"; hidePanel(); $("toast").classList.remove("show"); syncMusic()
             $("title").style.display = "flex"; $("about").style.display = "block"; $("topbtns").style.display = "none"
         }
         const togglePause = () => {
@@ -278,29 +278,29 @@
         const settings = () => {
             showPanel(`<h2>Settings</h2>
                 <p>하트 개수</p><div class="row"><button class="clay alt pill ${maxHearts === 3 ? "on" : ""}" id="h3">3개</button><button class="clay alt pill ${maxHearts === 5 ? "on" : ""}" id="h5">5개 (쉬움)</button></div>
-                <p>소리</p><div class="row"><button class="clay alt pill ${AUD.music ? "on" : ""}" id="sMusic">음악</button><button class="clay alt pill ${AUD.sfx ? "on" : ""}" id="sSfx">효과음</button><button class="clay alt pill ${AUD.voice ? "on" : ""}" id="sVoice">음성</button></div>
+                <p>소리</p><div class="row"><button class="clay alt pill ${AUD.music ? "on" : ""}" id="sMusic">음악</button><button class="clay alt pill ${AUD.sfx ? "on" : ""}" id="sSfx">효과음</button></div>
                 <p>조작: ← → 이동 · ↑ / Space 점프 (길게 누르면 높이 점프)<br>Esc 또는 P: 일시정지</p>
                 <button class="clay play" id="bBack">닫기</button>`)
             $("h3").onclick = () => { maxHearts = 3; settings() }; $("h5").onclick = () => { maxHearts = 5; settings() }
-            const flip = (id, k) => { $(id).onclick = () => { AUD[k] = !AUD[k]; saveAud(); initAudio(); syncMusic(); if (k === "voice") { AUD.voice ? speak("음성 안내를 켰어요") : stopVoice() } updSnd(); settings() } }
-            flip("sMusic", "music"); flip("sSfx", "sfx"); flip("sVoice", "voice")
+            const flip = (id, k) => { $(id).onclick = () => { AUD[k] = !AUD[k]; saveAud(); initAudio(); syncMusic(); updSnd(); settings() } }
+            flip("sMusic", "music"); flip("sSfx", "sfx")
             $("bBack").onclick = hidePanel
         }
-        const updSnd = () => { $("btnSnd").textContent = AUD.music || AUD.sfx || AUD.voice ? "🔊" : "🔇" }
+        const updSnd = () => { $("btnSnd").textContent = AUD.music || AUD.sfx ? "🔊" : "🔇" }
         $("btnSnd").onclick = () => {
-            const on = !(AUD.music || AUD.sfx || AUD.voice)
-            AUD.music = AUD.sfx = AUD.voice = on; saveAud(); initAudio(); syncMusic(); if (!on) stopVoice(); updSnd()
+            const on = !(AUD.music || AUD.sfx)
+            AUD.music = AUD.sfx = on; saveAud(); initAudio(); syncMusic(); updSnd()
         }
         updSnd()
         $("btnPlay").onclick = startGame; $("btnSettings").onclick = settings; $("btnPause").onclick = togglePause
         $("btnFull").onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.() }
         const gameOver = () => {
-            state = "over"; syncMusic(); sfx.over(); speak("쓰러졌어요. 다시 도전해 봐요!")
+            state = "over"; syncMusic(); sfx.over()
             showPanel(`<h2>쓰러졌어요…</h2><p>도토리 ${score}개 · 보물 ${got.size}/4<br>곶자왈 돌길은 험하지만 다시 도전해 봐요!</p><button class="clay play" id="bRetry">다시 도전</button><button class="clay alt" id="bTitle">처음 화면</button>`)
             $("bRetry").onclick = startGame; $("bTitle").onclick = toTitle
         }
         const win = () => {
-            state = "win"; syncMusic(); sfx.win(); speak("탐험 완료! 곶자왈은 빗물을 땅속으로 보내 지하수를 채우는 제주의 허파 같은 숲이에요.")
+            state = "win"; syncMusic(); sfx.win()
             const names = TREASURES.filter((t) => got.has(t.type)).map((t) => t.name).join(", ") || "없음"
             showPanel(`<h2>🌿 탐험 완료!</h2><p>도토리 ${score}개 · 보물 ${got.size}/4<br>찾은 보물: ${names}<br><br>곶자왈은 빗물을 땅속으로 보내 지하수를 채우는 제주의 허파 같은 숲이에요.</p><button class="clay play" id="bRetry">다시 탐험</button><button class="clay alt" id="bTitle">처음 화면</button>`)
             $("bRetry").onclick = startGame; $("bTitle").onclick = toTitle
@@ -354,7 +354,7 @@
                 for (let i = 0; i < 5; i++) sparks.push({ x: a.x, y: a.y, vx: (Math.random() - .5) * 4, vy: -Math.random() * 4, life: 24, c: "#ffd45a" })
             }
             for (const t of treasures) if (!t.taken && Math.hypot(t.x - P.x, t.y - (P.y - 30)) < 36) {
-                t.taken = true; got.add(t.type); toast(t.fact, 5200); sfx.treasure(); speak(t.fact)
+                t.taken = true; got.add(t.type); toast(t.fact, 5200); sfx.treasure()
                 for (let i = 0; i < 14; i++) sparks.push({ x: t.x, y: t.y, vx: (Math.random() - .5) * 8, vy: -Math.random() * 7, life: 40, c: "#fff3a0" })
             }
             for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.vy += 0.3; s.life-- }
@@ -362,204 +362,332 @@
             if (P.x > GOAL) win()
         }
 
-        // ====================================================== 점토 느낌 그리기 도구
-        const grad = (x, y, r, light, base, dark) => {
-            const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r * 1.1)
-            g.addColorStop(0, light); g.addColorStop(0.55, base); g.addColorStop(1, dark); return g
-        }
-        const blob = (x, y, rx, ry, light, base, dark) => {
-            ctx.fillStyle = grad(x, y, Math.max(rx, ry), light, base, dark)
-            ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill()
-        }
-        const rrect = (x, y, w, h, r, light, base, dark) => {
-            ctx.fillStyle = grad(x + w / 2, y + h / 2, Math.max(w, h) / 1.6, light, base, dark)
-            ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill()
-        }
-        const GREEN = ["#b6e47a", "#6fb34a", "#3f7f31"], DEEP = ["#8cc37a", "#4f9a46", "#2d6a33"], HAZE = ["#cfe6d2", "#a8cdb0", "#8bb79a"]
-        const BROWN = ["#b98a62", "#8a5a3a", "#5a3822"], ROCK = ["#9a8574", "#6e5a4c", "#43362d"], CLOUD = ["#fffdf8", "#e8e2d8", "#bdb5a8"]
 
-        // 아이콘들
-        const drawAcorn = (x, y, s) => {
-            blob(x, y + s * 0.15, s * 0.62, s * 0.8, "#e8b070", "#b9763a", "#7a4a22")
-            blob(x, y - s * 0.4, s * 0.78, s * 0.42, "#a8794e", "#7a5232", "#4d321d")
-            ctx.fillStyle = "#4d321d"; ctx.fillRect(x - s * 0.06, y - s * 0.95, s * 0.12, s * 0.3)
-        }
-        const drawCamellia = (x, y, s) => {
-            for (let i = 0; i < 5; i++) { const a = i * 1.2566; blob(x + Math.cos(a) * s * 0.5, y + Math.sin(a) * s * 0.5, s * 0.5, s * 0.5, "#ff7a7a", "#d8262e", "#8f1018") }
-            blob(x, y, s * 0.32, s * 0.32, "#fff3a0", "#ffc83a", "#d8962a")
-        }
-        const drawFern = (x, y, s) => {
-            ctx.lineCap = "round"
-            for (const [a, c] of [[-0.9, "#5aa84a"], [-0.3, "#6fc05a"], [0.3, "#6fc05a"], [0.9, "#5aa84a"]]) {
-                ctx.strokeStyle = c; ctx.lineWidth = s * 0.28
-                ctx.beginPath(); ctx.moveTo(x, y + s * 0.6); ctx.quadraticCurveTo(x + Math.sin(a) * s * 0.9, y - s * 0.2, x + Math.sin(a) * s * 1.1, y - s * 0.6 - Math.abs(a) * 4); ctx.stroke()
-            }
-        }
-        const drawMushroom = (x, y, s) => {
-            rrect(x - s * 0.22, y, s * 0.44, s * 0.7, s * 0.2, "#fffaf0", "#efe3cc", "#c9b898")
-            blob(x, y, s * 0.8, s * 0.55, "#ff8a6a", "#e03a2e", "#9a1a14")
-            ctx.fillStyle = "rgba(255,255,255,.9)"; for (const [dx, dy] of [[-0.35, -0.1], [0.1, -0.3], [0.4, 0.05]]) { ctx.beginPath(); ctx.arc(x + dx * s, y + dy * s, s * 0.12, 0, 7); ctx.fill() }
-        }
-        const drawIcon = { acorn: drawAcorn, camellia: drawCamellia, fern: drawFern, mushroom: drawMushroom }
-        const drawHeart = (x, y, s, full) => {
-            ctx.save(); ctx.globalAlpha = full ? 1 : 0.28
-            const g = ctx.createRadialGradient(x - s * .3, y - s * .3, s * .1, x, y, s * 1.2); g.addColorStop(0, "#ff9a6a"); g.addColorStop(0.6, "#e8481f"); g.addColorStop(1, "#a82a10")
-            ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x, y + s * 0.95)
-            ctx.bezierCurveTo(x - s * 1.2, y + s * 0.2, x - s * 0.8, y - s * 0.8, x, y - s * 0.2)
-            ctx.bezierCurveTo(x + s * 0.8, y - s * 0.8, x + s * 1.2, y + s * 0.2, x, y + s * 0.95); ctx.fill()
-            ctx.fillStyle = "rgba(255,255,255,.4)"; ctx.beginPath(); ctx.ellipse(x - s * 0.45, y - s * 0.2, s * 0.18, s * 0.28, -0.6, 0, 7); ctx.fill()
-            ctx.restore()
-        }
+        // ====================================================== 3D 장면 (three.js) — 2D 좌표(px)를 월드 단위로 변환해서 같은 게임 로직을 3D로 보여줌
+        const U = 1 / 50
+        const wx = (x) => x * U, wy = (y) => (GY - y) * U
+        const R = (i, k = 0) => rnd(i * 13.7 + k * 7.1)
+        const touchUI = () => matchMedia("(pointer: coarse)").matches || "ontouchstart" in window || innerWidth < 900
 
-        // 캐릭터 (갈색 머리, 노란 재킷, 배낭)
-        const drawHero = (x, y, dir, walk, moving, air) => {
-            ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1)
-            const sw = moving ? Math.sin(walk) * 6 : 0, bob = moving ? Math.abs(Math.sin(walk)) * 2 : 0
-            blob(-12, -32 - bob, 11, 14, "#a07850", "#7a5232", "#4d321d")                   // 배낭
-            rrect(-12 + (air ? 0 : sw), -12, 10, 13, 5, "#8a6a4a", "#5a4630", "#33281a")     // 다리
-            rrect(2 - (air ? 0 : sw), -12, 10, 13, 5, "#8a6a4a", "#5a4630", "#33281a")
-            blob(-5 + (air ? 0 : sw), -1, 8, 4.5, "#8a5a3a", "#5a3822", "#33200f")           // 신발
-            blob(7 - (air ? 0 : sw), -1, 8, 4.5, "#8a5a3a", "#5a3822", "#33200f")
-            rrect(-14, -42 - bob, 28, 32, 12, "#ffe58a", "#f2c53a", "#c99a1a")               // 재킷
-            blob(0, -52 - bob, 15, 14, "#ffe0c0", "#f2b98a", "#c98a5a")                      // 얼굴
-            for (const [dx, dy, r] of [[-9, -62, 9], [0, -66, 10], [9, -62, 9], [-13, -54, 6], [12, -56, 6]]) blob(dx, dy - bob, r, r, "#a07850", "#7a5232", "#4d321d")   // 머리카락
-            ctx.fillStyle = "#3a2414"; ctx.beginPath(); ctx.arc(5, -52 - bob, 2, 0, 7); ctx.arc(-3, -52 - bob, 2, 0, 7); ctx.fill()
-            ctx.fillStyle = "rgba(255,120,110,.5)"; ctx.beginPath(); ctx.arc(9, -47 - bob, 3, 0, 7); ctx.fill()
-            ctx.restore()
-        }
+        let renderer; try { renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true }) } catch (e) { document.getElementById("loadfail").style.display = "flex"; throw e }
+        window.__g3dReady = true
+        renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2))
+        renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05
+        const scene = new THREE.Scene()
+        scene.background = (() => {
+            const c = document.createElement("canvas"); c.width = 2; c.height = 256
+            const g = c.getContext("2d"), gr = g.createLinearGradient(0, 0, 0, 256)
+            gr.addColorStop(0, "#6fb4ea"); gr.addColorStop(0.55, "#b7dcee"); gr.addColorStop(1, "#f3ecd0")
+            g.fillStyle = gr; g.fillRect(0, 0, 2, 256)
+            const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t
+        })()
+        scene.fog = new THREE.Fog(0xdcebd8, 30, 90)
+        const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 500)
 
-        const tree = (sx, base, sc, pal, trunk) => {
-            if (trunk) rrect(sx - 13 * sc, base - 150 * sc, 26 * sc, 150 * sc, 10 * sc, ...BROWN)
-            blob(sx - 55 * sc, base - 170 * sc, 70 * sc, 56 * sc, ...pal)
-            blob(sx + 55 * sc, base - 165 * sc, 70 * sc, 56 * sc, ...pal)
-            blob(sx, base - 205 * sc, 82 * sc, 66 * sc, ...pal)
-            blob(sx - 10 * sc, base - 150 * sc, 78 * sc, 48 * sc, ...pal)
-        }
-        const cloud = (x, y, s) => {
-            for (const [dx, dy, r] of [[0, 0, 30], [34, -14, 38], [76, -2, 32], [38, 8, 34], [-18, 10, 20], [96, 10, 20]]) blob(x + dx * s, y + dy * s, r * s, r * s * 0.9, ...CLOUD)
-        }
-        const fernDecor = (x, sway) => {
-            for (let k = -2; k <= 2; k++) {
-                ctx.save(); ctx.translate(x, GY - 2); ctx.rotate(k * 0.34 + sway * 0.04)
-                blob(0, -24, 7, 26, "#a8e07a", "#5faa42", "#356f2b"); ctx.restore()
-            }
-        }
+        scene.add(new THREE.HemisphereLight(0xfff1d6, 0x5f8a58, 1.25))
+        const sun = new THREE.DirectionalLight(0xfff0d0, 2.7)
+        sun.castShadow = true; sun.shadow.mapSize.set(touchUI() ? 1024 : 2048, touchUI() ? 1024 : 2048)
+        Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 15, bottom: -15, near: 1, far: 70 })
+        sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04
+        scene.add(sun, sun.target)
 
-        // ====================================================== 장면 그리기
-        const drawScene = () => {
-            ctx.setTransform(S * DPR, 0, 0, S * DPR, 0, 0)
-            const sky = ctx.createLinearGradient(0, 0, 0, VH)
-            sky.addColorStop(0, "#6aaee6"); sky.addColorStop(0.55, "#a9cde8"); sky.addColorStop(1, "#dcebe6")
-            ctx.fillStyle = sky; ctx.fillRect(0, 0, W, VH)
-            ctx.translate(0, OY)
-
-            blob(W * 0.74, 120, 70, 70, "#fff6cc", "#ffe49a", "rgba(255,228,154,0)")                     // 해
-            for (const [bx, by, sc] of [[60, 70, 0.9], [420, 130, 0.7], [760, 50, 1.0], [1100, 110, 0.8], [1380, 60, 0.9]]) {
-                const x = ((bx - camX * 0.1 - time * 0.12) % 1500 + 1500) % 1500 - 160
-                cloud(x, by, sc)
-            }
-            // 한라산과 오름 실루엣
-            ctx.fillStyle = "rgba(122, 164, 190, 0.7)"; ctx.beginPath(); ctx.moveTo(-10, H)
-            for (let sx = -10; sx <= W + 10; sx += 8) {
-                const m = ((sx + camX * 0.1) % 2200 + 2200) % 2200
-                const y = GY - 40 - 170 * Math.exp(-(((m - 1000) / 380) ** 2)) - 45 * Math.exp(-(((m - 300) / 220) ** 2)) - 35 * Math.exp(-(((m - 1750) / 200) ** 2))
-                ctx.lineTo(sx, y)
-            }
-            ctx.lineTo(W + 10, H); ctx.fill()
-            // 먼 숲 · 가까운 숲
-            for (const [p, gap, sc, pal, trunk, off] of [[0.3, 250, 0.55, HAZE, false, 120], [0.55, 400, 0.85, DEEP, true, 160]]) {
-                for (let i = Math.floor((camX * p - 200) / gap); i < (camX * p + W + 200) / gap; i++) {
-                    const sx = i * gap + rnd(i + p * 9) * 90 - camX * p
-                    tree(sx, GY - 8 + off * 0.0, sc * (0.85 + rnd(i * 3) * 0.4), pal, trunk)
-                }
-            }
-            ctx.save(); ctx.translate(-camX, 0)
-            ctx.fillStyle = "#43362d"; ctx.fillRect(camX - 10, GY + 130, W + 20, 3000)   // 땅 아래 빈 공간
-            // 구덩이(숨골)
-            for (let i = 0; i < grounds.length - 1; i++) {
-                const a = grounds[i][1], b = grounds[i + 1][0]
-                const g = ctx.createLinearGradient(0, GY, 0, H + 80); g.addColorStop(0, "#35503a"); g.addColorStop(1, "#0e1a12")
-                ctx.fillStyle = g; ctx.fillRect(a, GY, b - a, 3000)
-            }
-            // 땅: 현무암 블록 + 이끼 윗면
-            for (const [a, b] of grounds) {
-                const x0 = Math.max(a, Math.floor(camX / 90) * 90 - 90), x1 = Math.min(b, camX + W + 90)
-                for (let x = Math.ceil(x0 / 90) * 90; x < x1; x += 90) {
-                    for (let r = 0; r < 2; r++) {
-                        const k = x / 90 * 7 + r * 3, bx = Math.max(x, a), bw = Math.min(x + 90, b) - bx
-                        if (bw <= 0) continue
-                        const t = rnd(k)
-                        rrect(bx + 2, GY + 10 + r * 62, bw - 4, 60, 12, t > .5 ? "#b08a6a" : "#9a8574", t > .5 ? "#86604a" : "#6e5a4c", t > .5 ? "#5a3e2c" : "#43362d")
-                    }
-                }
-                rrect(a, GY - 8, b - a, 26, 12, "#a8e07a", "#6fb34a", "#3f7f31")
-                for (let x = Math.ceil(Math.max(a, camX - 40) / 26) * 26; x < Math.min(b, camX + W + 40); x += 26) blob(x, GY + 14, 14, 9, "#a8e07a", "#6fb34a", "#3f7f31")
-            }
-            for (const p of platforms) {
-                if (p.x > camX + W + 50 || p.x + p.w < camX - 50) continue
-                rrect(p.x, p.y + 2, p.w, 32, 14, ...ROCK)
-                rrect(p.x - 4, p.y - 8, p.w + 8, 20, 10, "#a8e07a", "#6fb34a", "#3f7f31")
-            }
-            // 양치식물 장식
-            for (let x = 160; x < LEN; x += 210 + rnd(x) * 60) {
-                if (!grounds.some(([a, b]) => x > a + 20 && x < b - 20) || hazards.some((h) => Math.abs(h.x - x) < 70)) continue
-                if (x < camX - 60 || x > camX + W + 60) continue
-                fernDecor(x, Math.sin(time * 0.03 + x))
-            }
-            // 장애물: 용암돌, 가시덤불
-            for (const h of hazards) {
-                if (h.x < camX - 80 || h.x > camX + W + 80) continue
-                if (h.type === "rock") {
-                    blob(h.x - 12, GY - 14, 22, 18, ...ROCK); blob(h.x + 10, GY - 17, 24, 22, "#a8928a", "#7a655a", "#4a3a32"); blob(h.x, GY - 24, 18, 14, "#b8a090", "#86705f", "#574538")
-                } else {
-                    for (const [dx, dy, r] of [[-14, -14, 15], [0, -22, 18], [14, -14, 15]]) blob(h.x + dx, GY + dy, r, r, "#6f9f4a", "#3f6f32", "#1f3f1f")
-                    ctx.fillStyle = "#e8d8a0"
-                    for (let i = 0; i < 9; i++) { const a = -Math.PI + i * (Math.PI / 8); const bx = h.x + Math.cos(a) * 20, by = GY - 20 + Math.sin(a) * 18
-                        ctx.beginPath(); ctx.moveTo(bx - 2, by + 2); ctx.lineTo(bx + Math.cos(a) * 9, by + Math.sin(a) * 9); ctx.lineTo(bx + 2, by + 2); ctx.fill() }
-                }
-            }
-            // 시작 깃발 · 도착 깃발
-            for (const fx of [START_X + 180, GOAL]) {
-                rrect(fx - 5, GY - 150, 10, 150, 4, "#8a5a3a", "#5a3822", "#33200f")
-                ctx.fillStyle = grad(fx + 30, GY - 130, 40, "#ff9a55", "#e8641f", "#b0400f")
-                ctx.beginPath(); ctx.moveTo(fx + 5, GY - 148); ctx.quadraticCurveTo(fx + 40, GY - 140 + Math.sin(time * 0.08) * 4, fx + 62, GY - 118); ctx.quadraticCurveTo(fx + 36, GY - 104, fx + 5, GY - 100); ctx.fill()
-            }
-            // 아이템
-            for (const a of acorns) if (!a.taken && a.x > camX - 40 && a.x < camX + W + 40) drawAcorn(a.x, a.y + Math.sin(time * 0.06 + a.ph) * 4, 11)
-            for (const t of treasures) if (!t.taken) {
-                const by = t.y + Math.sin(time * 0.05 + t.x) * 5
-                blob(t.x, by, 30, 30, "rgba(255,243,160,.6)", "rgba(255,243,160,.25)", "rgba(255,243,160,0)")
-                drawIcon[t.type](t.x, by, 22)
-            }
-            // 플레이어
-            if (P.inv <= 0 || Math.floor(P.inv / 4) % 2) drawHero(P.x, P.y, P.dir, P.walk, Math.abs(P.vx) > 0.5 && P.onGround, !P.onGround)
-            for (const s of sparks) { ctx.fillStyle = s.c; ctx.globalAlpha = Math.min(1, s.life / 20); ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, 7); ctx.fill(); ctx.globalAlpha = 1 }
-            ctx.restore()
-
-            // 앞쪽 덩굴 (시차)
-            for (let i = 0; i < 6; i++) {
-                const sx = ((i * 330 + 90 - camX * 1.25) % 1980 + 1980) % 1980 - 200, len = 70 + rnd(i) * 90, top = -OY
-                ctx.strokeStyle = "#3f7f31"; ctx.lineWidth = 7; ctx.lineCap = "round"
-                ctx.beginPath(); ctx.moveTo(sx, top); ctx.quadraticCurveTo(sx + 16 * Math.sin(time * 0.02 + i), top + len / 2, sx - 4, top + len + 10); ctx.stroke()
-                blob(sx - 4, top + len + 12, 9, 12, "#a8e07a", "#6fb34a", "#3f7f31")
-            }
-            ctx.setTransform(S * DPR, 0, 0, S * DPR, 0, 0)
-        }
-
-        const drawHud = () => {
-            ctx.setTransform(S * DPR, 0, 0, S * DPR, 0, 0)
-            for (let i = 0; i < maxHearts; i++) drawHeart(34 + i * 36, 36, 14, i < hearts)
-            blob(W / 2 - 26, 34, 18, 18, "#fff3c0", "#f2c53a", "#c99a1a"); drawAcorn(W / 2 - 26, 34, 9)
-            ctx.fillStyle = "#fff"; ctx.strokeStyle = "rgba(60,40,20,.7)"; ctx.lineWidth = 4; ctx.font = "900 22px 'Trebuchet MS', sans-serif"; ctx.textAlign = "left"
-            ctx.strokeText(String(score), W / 2 - 2, 42); ctx.fillText(String(score), W / 2 - 2, 42)
-            TREASURES.forEach((t, i) => {
-                const x = W / 2 - 66 + i * 44, y = 76, have = got.has(t.type)
-                blob(x, y, 18, 18, "#fff7e0", have ? "#ffe9a8" : "#d8cdb8", have ? "#e8b84a" : "#9a8f7a")
-                ctx.save(); ctx.globalAlpha = have ? 1 : 0.28; drawIcon[t.type](x, y, 11); ctx.restore()
+        const mat = (c, r = 0.85) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 })
+        const mesh = (geo, m, x, y, z, parent) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o }
+        const world = new THREE.Group(); scene.add(world)
+        const dummy = new THREE.Object3D(), tmpC = new THREE.Color()
+        const inst = (geo, material, items) => {
+            const m = new THREE.InstancedMesh(geo, material, Math.max(1, items.length)); m.count = items.length
+            items.forEach((o, i) => {
+                dummy.position.set(o.x, o.y, o.z); dummy.rotation.set(o.rx || 0, o.ry || 0, o.rz || 0); dummy.scale.set(o.sx ?? 1, o.sy ?? 1, o.sz ?? 1)
+                dummy.updateMatrix(); m.setMatrixAt(i, dummy.matrix)
+                if (o.c !== undefined) m.setColorAt(i, tmpC.set(o.c))
             })
-            // 진행도
-            const prog = Math.max(0, Math.min(1, (P.x - START_X) / (GOAL - START_X)))
-            rrect(W / 2 - 100, 104, 200, 8, 4, "#fff", "#e8e0d0", "#b8ad98"); rrect(W / 2 - 100, 104, 8 + 192 * prog, 8, 4, ...GREEN)
+            m.castShadow = m.receiveShadow = true; world.add(m); return m
+        }
+        const rbox = (w, h, d, r = 0.2) => new RoundedBoxGeometry(w, h, d, 3, r)
+
+        // ---------- 땅, 발판, 구덩이
+        const DIRT = mat(0x8c6b4b, 0.95), GRASS = mat(0x8fd45a, 0.8), BACK = mat(0x62a447, 0.85), WHITE = mat(0xffffff, 0.9)
+        const blocks = [], lips = []
+        for (const [a, b] of grounds) {
+            const w = (b - a) * U, cx = wx(a) + w / 2
+            mesh(rbox(w, 3.2, 12, 0.3), DIRT, cx, -2.0, -3, world)
+            mesh(rbox(w + 0.3, 0.55, 12.3, 0.24), GRASS, cx, -0.27, -3, world)
+            for (let x = wx(a) + 0.9, k = 0; x < wx(b) - 0.5; x += 1.75, k++) for (let r = 0; r < 2; r++) {
+                const t = R(k + r * 31 + a, 2)
+                blocks.push({ x: x + (r ? 0.8 : 0), y: -0.95 - r * 1.05, z: 3.05, sx: 0.9 + t * 0.2, c: t > 0.5 ? 0xb89a7c : 0x9c8878 })
+            }
+            for (let x = wx(a) + 0.1; x < wx(b); x += 0.55) lips.push({ x, y: -0.08, z: 2.95 + R(x * 9, 1) * 0.15, sx: 1.1, sy: 0.75, sz: 1, c: R(x * 7) > 0.5 ? 0x9bdc63 : 0x7cc24e })
+        }
+        inst(rbox(1.6, 0.95, 0.6, 0.22), WHITE, blocks)
+        inst(new THREE.SphereGeometry(0.28, 10, 8), WHITE, lips)
+        for (const p of platforms) {
+            const w = p.w * U, cx = wx(p.x) + w / 2, top = wy(p.y)
+            mesh(rbox(w, 0.9, 3.4, 0.28), mat(0xa08a78, 0.95), cx, top - 0.55, 0, world)
+            mesh(rbox(w + 0.25, 0.4, 3.7, 0.18), GRASS, cx, top - 0.2, 0, world)
+        }
+        const abyss = mesh(new THREE.PlaneGeometry(400, 80), mat(0x14281d, 1), 60, -4.2, -10, world)
+        abyss.rotation.x = -Math.PI / 2
+        const backW = LEN * U + 80
+        mesh(rbox(backW, 3.4, 44, 0.4), DIRT, backW / 2 - 30, -2.0, -31, world)
+        mesh(rbox(backW + 0.3, 0.55, 44.3, 0.24), BACK, backW / 2 - 30, -0.27, -31, world)
+
+        // ---------- 나무 (통통한 층층 수관)
+        const GREENS = [0x4f9a3c, 0x62ad45, 0x3f8a3a, 0x78bb4e, 0x56a14a]
+        const onGround = (xw, m = 0.8) => grounds.some(([a, b]) => xw > wx(a) + m && xw < wx(b) - m)
+        const trunks = [], cr1 = [], cr2 = [], cr3 = []
+        const addTree = (x, z, s, i) => {
+            const base = GREENS[Math.floor(R(i, 3) * GREENS.length)], c = tmpC.set(base)
+            const hi = c.clone().offsetHSL(0, 0, 0.05).getHex(), hi2 = c.clone().offsetHSL(0, 0, 0.1).getHex()
+            trunks.push({ x, y: 0.6 * s, z, sx: s, sy: 1.2 * s, sz: s, c: 0x7a5233 })
+            cr1.push({ x, y: 1.55 * s, z, sx: 2.1 * s, sy: 1.15 * s, sz: 2.1 * s, ry: R(i, 5) * 1.5, c: base })
+            cr2.push({ x, y: 2.5 * s, z, sx: 1.6 * s, sy: 1.05 * s, sz: 1.6 * s, ry: R(i, 6) * 1.5, c: hi })
+            cr3.push({ x, y: 3.35 * s, z, sx: 1.1 * s, sy: 0.9 * s, sz: 1.1 * s, ry: R(i, 7) * 1.5, c: hi2 })
+        }
+        let ti = 0
+        for (let x = -6; x < LEN * U + 8; x += 1.5) { ti++; if (!onGround(x) || R(ti) > 0.75) continue; addTree(x + (R(ti, 2) - 0.5), -2.7 - R(ti, 1) * 5.4, 0.75 + R(ti, 4) * 0.7, ti) }
+        for (let pass = 0; pass < 2; pass++) for (let x = -14; x < LEN * U + 20; x += 1.35) { ti++; addTree(x + (R(ti, 2) - 0.5) * 1.2, -11 - pass * 6 - R(ti, 1) * 7, 0.9 + R(ti, 4) * 0.9, ti) }
+        inst(new THREE.CylinderGeometry(0.2, 0.28, 1, 8), WHITE, trunks)
+        const crownGeo = rbox(1, 1, 1, 0.3)
+        inst(crownGeo, WHITE, cr1); inst(crownGeo, WHITE, cr2); inst(crownGeo, WHITE, cr3)
+
+        // ---------- 풀, 꽃, 양치식물, 돌 장식
+        const tufts = [], flowers = [], centers = [], fernLeaves = [], pebbles = []
+        grounds.forEach(([a, b], gi) => {
+            const wa = wx(Math.max(a, -300)), wb = wx(Math.min(b, LEN))
+            for (let k = 0; k < (wb - wa) * 4; k++) {
+                const x = wa + 0.3 + R(k, gi) * (wb - wa - 0.6), z = -3 + R(k, gi + 9) * 5.6
+                tufts.push({ x, y: 0.16, z, sx: 1, sy: 0.8 + R(k, 4) * 0.8, sz: 1, rz: (R(k, 6) - 0.5) * 0.5, c: R(k, 8) > 0.5 ? 0x7cc24e : 0x5aa63c })
+            }
+            for (let k = 0; k < (wb - wa) * 1.3; k++) {
+                const x = wa + R(k, gi + 20) * (wb - wa), z = (R(k, gi + 33) > 0.5 ? 1 : -1) * (0.9 + R(k, gi + 5) * 1.8)
+                const pal = [0xffffff, 0xffd1dc, 0xfff2a8][k % 3]
+                flowers.push({ x, y: 0.1, z, sx: 1, sy: 0.45, sz: 1, c: pal }); centers.push({ x, y: 0.15, z, c: 0xf2b134 })
+            }
+            for (let k = 0; k < (wb - wa) / 4; k++) {
+                const x = wa + 1 + R(k, gi + 50) * (wb - wa - 2), z = -3 + R(k, gi + 60) * 5.4
+                for (let l = 0; l < 6; l++) fernLeaves.push({ x, y: 0.4, z, ry: l * 1.05 + R(k, 3), rz: 0.75, sx: 1, sy: 1.15, sz: 0.35, c: 0x4aa83a })
+            }
+            for (let k = 0; k < (wb - wa) / 2.5; k++) {
+                const x = wa + R(k, gi + 70) * (wb - wa), s = 0.15 + R(k, 2) * 0.3
+                pebbles.push({ x, y: s * 0.4, z: -3 + R(k, gi + 80) * 5.6, sx: s, sy: s * 0.7, sz: s, ry: R(k, 4) * 3, c: R(k, 3) > 0.5 ? 0xa59080 : 0x7d6c60 })
+            }
+        })
+        inst(new THREE.ConeGeometry(0.09, 0.36, 5), WHITE, tufts)
+        inst(new THREE.SphereGeometry(0.11, 8, 6), WHITE, flowers)
+        inst(new THREE.SphereGeometry(0.05, 6, 5), WHITE, centers)
+        inst(new THREE.ConeGeometry(0.12, 0.9, 5), WHITE, fernLeaves)
+        inst(new THREE.DodecahedronGeometry(1, 0), WHITE, pebbles)
+
+        // ---------- 장애물
+        const ROCKM = [mat(0xa08a78, 0.95), mat(0x86705f, 0.95), mat(0xb8a090, 0.95)], BUSH = mat(0x2f6a32, 0.9), SPIKE = mat(0x8a5a32, 0.8), BERRY = mat(0xd9453b, 0.5)
+        const rockGeo = new THREE.DodecahedronGeometry(0.5, 1), bushGeo = new THREE.IcosahedronGeometry(0.4, 1), spikeGeo = new THREE.ConeGeometry(0.05, 0.4, 5), berryGeo = new THREE.SphereGeometry(0.06, 8, 6)
+        for (const h of hazards) {
+            const g = new THREE.Group(); g.position.set(wx(h.x), 0, 0); world.add(g)
+            if (h.type === "rock") {
+                [[-0.25, 0.3, 0.05, 0.9, 0], [0.28, 0.34, 0.1, 1, 1], [0, 0.66, 0, 0.75, 2]].forEach(([x, y, z, s, m], k) => {
+                    const o = mesh(rockGeo, ROCKM[m], x, y, z, g); o.scale.set(s * 1.1, s * 0.85, s); o.rotation.set(k, k * 2, 0)
+                })
+            } else {
+                [[-0.3, 0.3, 0, 1], [0.3, 0.3, 0.05, 1.05], [0, 0.35, 0.15, 1.1], [0, 0.55, -0.1, 0.85]].forEach(([x, y, z, s]) => mesh(bushGeo, BUSH, x, y, z, g).scale.setScalar(s))
+                for (let k = 0; k < 16; k++) {
+                    const a = k * 2.4, sp = mesh(spikeGeo, SPIKE, Math.cos(a) * 0.45, 0.35 + (k % 4) * 0.1, Math.sin(a) * 0.3, g)
+                    sp.rotation.set(Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9)
+                }
+                for (let k = 0; k < 4; k++) mesh(berryGeo, BERRY, -0.3 + k * 0.2, 0.62, 0.3, g)
+            }
+        }
+
+        // ---------- 도토리 · 보물
+        const acBody = new THREE.SphereGeometry(0.17, 14, 12), acCap = new THREE.SphereGeometry(0.19, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), acStem = new THREE.CylinderGeometry(0.02, 0.03, 0.09, 6)
+        const acMatB = mat(0xe0a45a, 0.55), acMatC = mat(0x7a4a26, 0.8)
+        const makeAcorn = (s = 1) => {
+            const g = new THREE.Group()
+            mesh(acBody, acMatB, 0, 0, 0, g).scale.y = 1.25
+            mesh(acCap, acMatC, 0, 0.08, 0, g).scale.set(1, 0.9, 1)
+            mesh(acStem, acMatC, 0, 0.29, 0, g)
+            g.scale.setScalar(s); return g
+        }
+        const glowTex = (() => {
+            const c = document.createElement("canvas"); c.width = c.height = 64
+            const g = c.getContext("2d"), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32)
+            gr.addColorStop(0, "rgba(255,244,170,1)"); gr.addColorStop(0.4, "rgba(255,220,110,.45)"); gr.addColorStop(1, "rgba(255,220,110,0)")
+            g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t
+        })()
+        const makeTreasure = (type) => {
+            const g = new THREE.Group()
+            if (type === "camellia") {
+                const fl = new THREE.Group(); fl.rotation.x = 1.15; g.add(fl)
+                for (let k = 0; k < 6; k++) { const a = k * 1.047, o = mesh(new THREE.SphereGeometry(0.2, 10, 8), mat(0xe0344a, 0.6), Math.cos(a) * 0.24, 0, Math.sin(a) * 0.24, fl); o.scale.set(1, 0.45, 1) }
+                for (let k = 0; k < 5; k++) { const a = k * 1.256 + 0.3, o = mesh(new THREE.SphereGeometry(0.16, 10, 8), mat(0xf0566a, 0.6), Math.cos(a) * 0.12, 0.07, Math.sin(a) * 0.12, fl); o.scale.set(1, 0.5, 1) }
+                mesh(new THREE.SphereGeometry(0.1, 10, 8), mat(0xf2b134, 0.5), 0, 0.12, 0, fl)
+            } else if (type === "fern") {
+                for (let k = 0; k < 7; k++) {
+                    const o = mesh(new THREE.ConeGeometry(0.12, 0.9, 6), mat(0x4aa83a, 0.7), 0, 0, 0, g)
+                    o.geometry = o.geometry.clone(); o.geometry.translate(0, 0.45, 0)
+                    o.rotation.set((k % 2 ? 0.25 : -0.25), k * 0.9, (k - 3) * 0.28); o.scale.set(1, 1, 0.3)
+                }
+                g.position.y -= 0.35
+            } else if (type === "mushroom") {
+                mesh(new THREE.CylinderGeometry(0.12, 0.17, 0.4, 12), mat(0xf5e6c8, 0.7), 0, -0.1, 0, g)
+                const cap = mesh(new THREE.SphereGeometry(0.42, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(0xe5483a, 0.6), 0, 0.08, 0, g); cap.scale.y = 0.85
+                for (let k = 0; k < 6; k++) { const a = k * 1.05; mesh(new THREE.SphereGeometry(0.06, 8, 6), WHITE, Math.cos(a) * 0.25, 0.28 - (k % 2) * 0.06, Math.sin(a) * 0.25, g) }
+            } else g.add(makeAcorn(1.9))
+            const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true }))
+            glow.scale.set(2.4, 2.4, 1); g.add(glow)
+            const wrap = new THREE.Group(); wrap.add(g); wrap.userData.glow = glow; wrap.userData.spin = g
+            return wrap
+        }
+        const itemsGroup = new THREE.Group(); scene.add(itemsGroup)
+        let builtFor = null, acornObjs = [], treasureObjs = []
+        const rebuildItems = () => {
+            itemsGroup.clear(); acornObjs = []; treasureObjs = []
+            for (const a of acorns) { const o = makeAcorn(1); o.position.set(wx(a.x), wy(a.y), 0); itemsGroup.add(o); acornObjs.push({ o, a }) }
+            for (const t of treasures) { const o = makeTreasure(t.type); o.position.set(wx(t.x), wy(t.y), 0); itemsGroup.add(o); treasureObjs.push({ o, t }) }
+            builtFor = acorns
+        }
+
+        // ---------- 결승 깃발
+        {
+            const g = new THREE.Group(); g.position.set(wx(GOAL), 0, 0); world.add(g)
+            mesh(new THREE.CylinderGeometry(0.07, 0.09, 3.6, 8), mat(0x7a5233), 0, 1.8, 0, g)
+            mesh(new THREE.SphereGeometry(0.15, 12, 10), mat(0xf2c53a, 0.4), 0, 3.65, 0, g)
+            const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(1.4, -0.45); sh.lineTo(0, -0.9); sh.lineTo(0, 0)
+            const flag = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshStandardMaterial({ color: 0xe8641f, side: THREE.DoubleSide, roughness: 0.8 }))
+            flag.position.set(0.05, 3.55, 0); flag.castShadow = true; g.add(flag); g.userData.flag = flag; world.userData.flag = flag
+            mesh(rbox(1.6, 0.35, 1.6, 0.15), mat(0xa08a78, 0.95), 0, 0.17, 0, g)
+        }
+
+        // ---------- 하늘: 한라산, 구름, 해
+        const far = new THREE.Group(); scene.add(far)
+        const hMat = new THREE.MeshStandardMaterial({ color: 0x86b592, roughness: 1, fog: false })
+        const hl = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 20, 0, Math.PI * 2, 0, Math.PI / 2), hMat); hl.scale.set(75, 26, 36); hl.position.set(10, -4, -130); far.add(hl)
+        for (const [x, s, c] of [[-70, 0.7, 0x9ccaa0], [95, 0.8, 0x93c39a]]) {
+            const m = new THREE.Mesh(new THREE.SphereGeometry(1, 36, 16, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: c, roughness: 1, fog: false }))
+            m.scale.set(40 * s, 12 * s, 24 * s); m.position.set(x, -3, -100); far.add(m)
+        }
+        const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(5, 24, 16), new THREE.MeshBasicMaterial({ color: 0xffe3a0, fog: false })); sunMesh.position.set(36, 30, -150); far.add(sunMesh)
+        const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true, opacity: 0.8 })); sunGlow.scale.set(60, 60, 1); sunGlow.position.copy(sunMesh.position); far.add(sunGlow)
+        const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, emissive: 0xffffff, emissiveIntensity: 0.4, fog: false })
+        const clouds = []
+        for (let i = 0; i < 12; i++) {
+            const g = new THREE.Group(), n = 4 + Math.floor(R(i, 1) * 3)
+            for (let k = 0; k < n; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), cloudMat); const r = 1 + R(i, k + 2) * 1.1; m.scale.set(r * 1.3, r, r); m.position.set((k - n / 2) * 1.7, (k % 2) * 0.5, R(i, k + 9) * 0.6); g.add(m) }
+            g.userData = { bx: R(i, 4) * 140, y: 13 + R(i, 5) * 12, z: -55 - R(i, 6) * 40 }; g.scale.setScalar(1.4 + R(i, 7)); scene.add(g); clouds.push(g)
+        }
+
+        // ---------- 주인공 (점토 인형: 큰 머리, 통통한 몸, 구슬 눈, 발그레한 볼)
+        const hero = new THREE.Group(); scene.add(hero)
+        const heroIn = new THREE.Group(); hero.add(heroIn)
+        const SKIN = mat(0xffd6b8, 1), HAIR = mat(0x7a4528, 1), JACKET = mat(0xffd23f, 1), PANTS = mat(0x8a5e3c, 1), SHOE = mat(0x5a3a22, 1), PACK = mat(0xe8641f, 1), SCARF = mat(0xe8641f, 1)
+        const EYE = new THREE.MeshStandardMaterial({ color: 0x1c1210, roughness: 0.15 }), CHEEK = mat(0xff9a9a, 1), SHINE = new THREE.MeshBasicMaterial({ color: 0xffffff })
+        const ball = (r, m, x, y, z, parent, sx = 1, sy = 1, sz = 1) => { const o = mesh(new THREE.SphereGeometry(r, 24, 18), m, x, y, z, parent); o.scale.set(sx, sy, sz); return o }
+        // 몸: 배가 볼록한 배 모양 + 스카프 + 단추 + 배낭
+        ball(0.31, JACKET, 0, 0.62, 0, heroIn, 1, 1.02, 0.98)
+        const scarf = mesh(new THREE.TorusGeometry(0.2, 0.065, 14, 28), SCARF, 0, 0.9, 0, heroIn); scarf.rotation.x = Math.PI / 2
+        ball(0.035, mat(0x7a4a26, 0.8), 0.3, 0.68, 0, heroIn); ball(0.035, mat(0x7a4a26, 0.8), 0.31, 0.54, 0, heroIn)
+        mesh(rbox(0.16, 0.36, 0.34, 0.08), PACK, -0.3, 0.66, 0, heroIn)
+        // 머리: 몸보다 큰 동그란 머리
+        const head = new THREE.Group(); head.position.set(0, 1.14, 0); heroIn.add(head)
+        ball(0.45, SKIN, 0, 0, 0, head, 1.04, 0.96, 1.04)
+        const hair = mesh(new THREE.SphereGeometry(0.475, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.53), HAIR, -0.05, 0.04, 0, head); hair.rotation.z = 0.28
+        ball(0.12, HAIR, -0.13, 0.12, 0.4, head); ball(0.12, HAIR, -0.13, 0.12, -0.4, head)     // 양옆 뭉치
+        ball(0.12, HAIR, 0.0, 0.47, 0, head); ball(0.075, HAIR, 0.06, 0.6, 0, head)               // 정수리 점토 꼬불이
+        ball(0.09, SKIN, 0, -0.03, 0.46, head, 0.7, 1, 0.8); ball(0.09, SKIN, 0, -0.03, -0.46, head, 0.7, 1, 0.8)   // 귀
+        for (const z of [-0.16, 0.16]) {
+            ball(0.075, EYE, 0.41, 0.03, z, head, 0.55, 1.2, 1)
+            ball(0.024, SHINE, 0.455, 0.075, z * 0.9, head)
+            ball(0.075, CHEEK, 0.39, -0.1, z * 1.75, head, 0.5, 0.75, 1.1)
+        }
+        ball(0.04, mat(0xffc9a8, 1), 0.45, -0.03, 0, head)
+        const smile = mesh(new THREE.TorusGeometry(0.06, 0.013, 8, 14, Math.PI), mat(0x6a2f22, 0.7), 0.44, -0.1, 0, head); smile.rotation.set(0, Math.PI / 2, Math.PI)
+        // 팔다리: 짧고 통통하게
+        const limb = (px, py, pz, len, r, m, endM, endR, endScale) => {
+            const p = new THREE.Group(); p.position.set(px, py, pz); heroIn.add(p)
+            mesh(new THREE.CapsuleGeometry(r, len, 6, 12), m, 0, -len / 2 - r * 0.3, 0, p)
+            ball(endR, endM, endScale ? 0.04 : 0, -len - r * 0.95, 0, p, endScale ? 1.3 : 1, endScale ? 0.8 : 1, 1)
+            return p
+        }
+        const legL = limb(0, 0.3, -0.17, 0.08, 0.11, PANTS, SHOE, 0.13, true), legR = limb(0, 0.3, 0.17, 0.08, 0.11, PANTS, SHOE, 0.13, true)
+        const armL = limb(0, 0.8, -0.32, 0.12, 0.085, JACKET, SKIN, 0.09), armR = limb(0, 0.8, 0.32, 0.12, 0.085, JACKET, SKIN, 0.09)
+        let heroAng = -0.6
+
+        // ---------- 반짝이 (2D 로직의 sparks를 3D 구슬로)
+        const sparkMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.08, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), 160)
+        sparkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); sparkMesh.frustumCulled = false; scene.add(sparkMesh)
+        sparkMesh.setColorAt(0, tmpC.set(0xffffff))
+
+        // ---------- HUD (DOM)
+        const hud = document.getElementById("hud"), hHearts = document.getElementById("hHearts"), hScore = document.getElementById("hScore"), hSlots = document.getElementById("hSlots"), hFill = document.getElementById("hFill")
+        const SLOT_ICON = { camellia: "🌺", fern: "🌿", mushroom: "🍄", acorn: "🌰" }
+        let hudKey = ""
+        const updateHud = () => {
+            hud.style.display = state === "title" ? "none" : "flex"
+            const key = [hearts, maxHearts, score, [...got].join()].join("|")
+            if (key !== hudKey) {
+                hudKey = key
+                hHearts.innerHTML = Array.from({ length: maxHearts }, (_, i) => `<span class="${i < hearts ? "on" : ""}">♥</span>`).join("")
+                hScore.textContent = score
+                hSlots.innerHTML = TREASURES.map((t) => `<i class="${got.has(t.type) ? "have" : ""}" title="${t.name}">${SLOT_ICON[t.type]}</i>`).join("")
+            }
+            hFill.style.width = Math.round(100 * Math.max(0, Math.min(1, (P.x - START_X) / (GOAL - START_X)))) + "%"
+        }
+
+        // ---------- 카메라 · 렌더
+        const ZOOM = parseFloat(new URLSearchParams(location.search).get("zoom")) || 1   // 확인용: ?zoom=0.3 처럼 카메라를 가깝게
+        let camXw = wx(START_X) + 2, camDist = 12
+        const resize3D = () => { renderer.setSize(innerWidth, innerHeight, false) }
+        addEventListener("resize", resize3D); resize3D()
+        const placeCamera = () => {
+            const aspect = innerWidth / innerHeight
+            const d = camDist = Math.max(15, 10.8 / (0.6887 * aspect)) * ZOOM
+            camera.aspect = aspect; camera.clearViewOffset()
+            const shake = P.stun > 8 ? (Math.random() - 0.5) * 0.12 : 0
+            camera.position.set(camXw - d * 0.1 + shake, 1 + d * 0.36 + shake, d * 0.93); camera.lookAt(camXw, 1, 0)
+            camera.updateProjectionMatrix(); camera.updateMatrixWorld()
+            const v = new THREE.Vector3(camXw, 0, 0).project(camera), frac = (1 - v.y) / 2
+            camera.setViewOffset(innerWidth, innerHeight, 0, (frac - (touchUI() ? 0.667 : 0.66)) * innerHeight, innerWidth, innerHeight)
+            scene.fog.near = d * 1.4; scene.fog.far = d * 6
+        }
+        const render3D = () => {
+            if (builtFor !== acorns) rebuildItems()
+            const px = wx(P.x), py = wy(P.y)
+            camXw += ((px + (touchUI() ? 0.7 : 2.2)) - camXw) * 0.1
+            camXw = Math.max(3, Math.min(LEN * U - 4, camXw))
+            // 주인공
+            const moving = P.onGround && Math.abs(P.vx) > 0.5, ph = P.walk * 1.9
+            hero.position.set(px, py + (moving ? Math.abs(Math.sin(ph)) * 0.06 : 0), 0)
+            const want = P.dir > 0 ? -0.6 : Math.PI + 0.6
+            let dA = ((want - heroAng + Math.PI * 3) % (Math.PI * 2)) - Math.PI
+            heroAng += dA * 0.25; hero.rotation.y = heroAng
+            const sy = 1 + Math.min(0.2, Math.abs(P.vy) * 0.012); heroIn.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy))
+            if (!P.onGround) { legL.rotation.z = 0.7; legR.rotation.z = -0.5; armL.rotation.z = -2.3; armR.rotation.z = -2.5 }
+            else if (moving) { const s = Math.sin(ph) * 0.9; legL.rotation.z = s; legR.rotation.z = -s; armL.rotation.z = -s * 0.9; armR.rotation.z = s * 0.9 }
+            else { legL.rotation.z = legR.rotation.z = 0; armL.rotation.z = Math.sin(time * 0.05) * 0.05 + 0.05; armR.rotation.z = -Math.sin(time * 0.05) * 0.05 - 0.05 }
+            head.rotation.z = moving ? Math.sin(ph) * 0.07 : Math.sin(time * 0.04) * 0.03; head.position.y = 1.14 + (moving ? Math.abs(Math.sin(ph)) * 0.02 : 0)
+            hero.visible = P.inv <= 0 || Math.floor(P.inv / 4) % 2 === 1
+            // 도토리 · 보물
+            for (const { o, a } of acornObjs) { o.visible = !a.taken; o.position.y = wy(a.y) + Math.sin(time * 0.07 + a.ph) * 0.07; o.rotation.y = time * 0.04 + a.ph }
+            for (const { o, t } of treasureObjs) {
+                o.visible = !t.taken; o.position.y = wy(t.y) + Math.sin(time * 0.05) * 0.12
+                o.userData.spin.rotation.y = time * 0.03; o.userData.glow.material.opacity = 0.65 + Math.sin(time * 0.08) * 0.25
+            }
+            // 반짝이
+            sparkMesh.count = Math.min(sparks.length, 160)
+            for (let i = 0; i < sparkMesh.count; i++) {
+                const s = sparks[i]; dummy.position.set(wx(s.x), wy(s.y), 0.4); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(Math.max(0.1, s.life / 24)); dummy.updateMatrix()
+                sparkMesh.setMatrixAt(i, dummy.matrix); sparkMesh.setColorAt(i, tmpC.set(s.c))
+            }
+            sparkMesh.instanceMatrix.needsUpdate = true; if (sparkMesh.instanceColor) sparkMesh.instanceColor.needsUpdate = true
+            // 하늘 시차, 구름, 깃발
+            far.position.x = camXw * 0.9
+            for (const c of clouds) c.position.set(camXw + ((((c.userData.bx - camXw * 0.1 + time * 0.006) % 140) + 140) % 140) - 70, c.userData.y, c.userData.z)
+            if (world.userData.flag) { world.userData.flag.rotation.y = Math.sin(time * 0.06) * 0.35; world.userData.flag.scale.x = 1 + Math.sin(time * 0.1) * 0.06 }
+            // 해 그림자 따라가기
+            sun.position.set(px - 9, 15, 10); sun.target.position.set(px, 0, 0); sun.target.updateMatrixWorld()
+            placeCamera(); updateHud()
+            renderer.render(scene, camera)
         }
 
         // ====================================================== 메인 루프
@@ -567,13 +695,11 @@
         const loop = (now) => {
             acc += Math.min(100, now - last); last = now
             while (acc >= 1000 / 60) { acc -= 1000 / 60; if (state === "play") update(); else time++ }
-            const target = state === "title" ? 0 : Math.max(-120, Math.min(LEN - W + 150, P.x - W * 0.36))
-            camX += (target - camX) * 0.12
-            drawScene()
-            if (state !== "title") drawHud()
+            render3D()
             requestAnimationFrame(loop)
         }
         requestAnimationFrame(loop)
+
     </script>
 </body>
 </html>
