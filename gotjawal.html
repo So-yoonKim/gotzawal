@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>곶자왈 탐험 — Jeju Gotjawal</title>
+    <style>
+        :root { --moss: #7ccf4b; --moss-dark: #2f6f2a; --orange: #e8641f; --cream: #fbe3bf; }
+        html, body { margin: 0; height: 100%; overflow: hidden; background: #7fb7e8; user-select: none; -webkit-user-select: none; touch-action: none;
+            font-family: "Trebuchet MS", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+        canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+        .layer { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+        .layer > * { pointer-events: auto; }
+
+        /* ---- 점토 느낌 글자/버튼 ---- */
+        h1 { margin: 0; font-size: clamp(44px, 9vw, 92px); font-weight: 900; letter-spacing: 0.02em; color: #86d957; line-height: 1.05; text-align: center;
+            -webkit-text-stroke: 3px #2f6f2a; paint-order: stroke fill;
+            text-shadow: 0 3px 0 #3b8a2e, 0 6px 0 #2f6f2a, 0 10px 14px rgba(20, 60, 20, .45), inset 0 0 8px #fff; }
+        .sub { color: #fff; letter-spacing: .5em; font-size: 13px; font-weight: 700; text-shadow: 0 2px 4px rgba(0,0,0,.35); }
+        .clay { border: 0; cursor: pointer; border-radius: 999px; font: 800 24px "Trebuchet MS", "Malgun Gothic", sans-serif; display: flex; align-items: center; justify-content: center; gap: 12px;
+            width: min(300px, 70vw); padding: 15px 0; transition: transform .12s; }
+        .clay:hover { transform: translateY(-2px) scale(1.03); } .clay:active { transform: translateY(3px); }
+        .clay.play { color: #fff; background: radial-gradient(ellipse at 30% 20%, #ff9a55, var(--orange) 55%, #c4480f);
+            box-shadow: inset 0 6px 8px rgba(255,255,255,.35), inset 0 -8px 10px rgba(0,0,0,.22), 0 8px 0 #9c3f10, 0 14px 22px rgba(0,0,0,.3); }
+        .clay.alt { color: #5a3a1f; background: radial-gradient(ellipse at 30% 20%, #fff2dd, var(--cream) 55%, #e8c997);
+            box-shadow: inset 0 6px 8px rgba(255,255,255,.6), inset 0 -8px 10px rgba(120,80,30,.2), 0 8px 0 #b99560, 0 14px 22px rgba(0,0,0,.25); }
+        #title { padding-top: 6vh; gap: 16px; } #menu { display: flex; flex-direction: column; gap: 18px; margin-top: 12px; align-items: center; }
+        #about { margin-top: 4px; width: min(560px, 92vw); text-align: center; color: #fff; font-size: 14px; line-height: 1.5;
+            text-shadow: 0 1px 4px rgba(0,0,0,.6); background: rgba(40, 70, 40, .35); border-radius: 18px; padding: 8px 14px; pointer-events: none; }
+
+        /* ---- 패널(설정/일시정지/결과) ---- */
+        #panel { justify-content: center; background: rgba(20, 40, 25, .45); display: none; }
+        #panel .card { background: radial-gradient(ellipse at 30% 10%, #fff7e8, #f6dcae 70%); color: #5a3a1f; border-radius: 34px; padding: 26px 30px; width: min(420px, 88vw);
+            text-align: center; box-shadow: inset 0 6px 10px #fff, inset 0 -10px 14px rgba(120,80,30,.2), 0 10px 0 #b99560, 0 22px 30px rgba(0,0,0,.35); display: flex; flex-direction: column; gap: 14px; align-items: center; }
+        .card h2 { margin: 0; font-size: 30px; color: var(--moss-dark); } .card p { margin: 0; line-height: 1.55; font-size: 15px; }
+        .card .clay { width: 100%; font-size: 20px; padding: 12px 0; }
+        .row { display: flex; gap: 10px; width: 100%; } .row .clay { flex: 1; }
+        .pill.on { outline: 4px solid #7ccf4b; }
+
+        /* ---- 알림, 상단 버튼, 터치 조작 ---- */
+        #toast { position: fixed; top: 74px; left: 50%; transform: translate(-50%, -20px); opacity: 0; transition: .35s; max-width: min(520px, 92vw); text-align: center;
+            background: radial-gradient(ellipse at 30% 10%, #fff7e8, #f6dcae); color: #5a3a1f; border-radius: 22px; padding: 10px 18px; font-weight: 700; font-size: 15px; line-height: 1.45;
+            box-shadow: inset 0 4px 6px #fff, 0 6px 0 #b99560, 0 12px 18px rgba(0,0,0,.3); pointer-events: none; }
+        #toast.show { opacity: 1; transform: translate(-50%, 0); }
+        #topbtns { position: fixed; top: 12px; right: 12px; display: none; gap: 10px; }
+        .round { width: 46px; height: 46px; border-radius: 50%; border: 0; cursor: pointer; color: #fff; font-size: 20px; font-weight: 900;
+            background: radial-gradient(ellipse at 30% 20%, #5a7a5a, #2f4a35); box-shadow: inset 0 4px 5px rgba(255,255,255,.3), 0 4px 0 #1b2f20, 0 8px 12px rgba(0,0,0,.3); }
+        #touch { position: fixed; left: 0; right: 0; bottom: 0; height: 150px; display: none; pointer-events: none; }
+        #touch > div { pointer-events: auto; display: flex; gap: 14px; position: absolute; bottom: 22px; touch-action: none; }
+        #dpad { left: 50%; transform: translateX(-50%); }
+        #jumpbox { right: 22px; }
+        #touch button { -webkit-tap-highlight-color: transparent; touch-action: none; }
+        .tbtn { width: 78px; height: 78px; border-radius: 50%; border: 0; color: #fff; font-size: 30px; font-weight: 900;
+            background: radial-gradient(ellipse at 30% 20%, #ff9a55, var(--orange) 60%, #c4480f); box-shadow: inset 0 5px 7px rgba(255,255,255,.35), 0 6px 0 #9c3f10, 0 12px 16px rgba(0,0,0,.3); }
+        .tbtn.move { background: radial-gradient(ellipse at 30% 20%, #6e8c6e, #35523a 65%); box-shadow: inset 0 5px 7px rgba(255,255,255,.3), 0 6px 0 #1b2f20, 0 12px 16px rgba(0,0,0,.3); }
+        .tbtn:active { transform: translateY(4px); }
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+
+    <div id="title" class="layer">
+        <h1>곶자왈<br>탐험</h1>
+        <div class="sub">DEMO · JEJU GOTJAWAL</div>
+        <div id="menu">
+            <button class="clay play" id="btnPlay">▶ Play</button>
+            <button class="clay alt" id="btnSettings">⚙ Settings</button>
+        </div>
+        <div id="about">곶자왈은 용암이 흘러 굳은 돌밭 위에 자란 제주의 숲이에요.<br>돌 틈의 비밀을 찾아 숲을 가로질러 보세요!</div>
+    </div>
+
+    <div id="topbtns"><button class="round" id="btnPause" title="일시정지">❚❚</button><button class="round" id="btnFull" title="전체화면">⛶</button></div>
+    <div id="toast"></div>
+    <div id="touch">
+        <div id="dpad"><button class="tbtn move" id="tLeft">◀</button><button class="tbtn move" id="tRight">▶</button></div>
+        <div id="jumpbox"><button class="tbtn" id="tJump">▲</button></div>
+    </div>
+    <div id="panel" class="layer"><div class="card" id="card"></div></div>
+
+    <script>
+        // ====================================================== 기본 설정
+        const cv = document.getElementById("c"), ctx = cv.getContext("2d")
+        const H = 540, GY = 440, LEN = 7100, GOAL = 6800, START_X = 300
+        let S = 1, DPR = 1, W = 960, VH = H
+        const resize = () => {
+            DPR = Math.min(devicePixelRatio || 1, 2)
+            S = Math.min(innerHeight / H, innerWidth / 640)
+            W = innerWidth / S; VH = innerHeight / S
+            cv.width = innerWidth * DPR; cv.height = innerHeight * DPR
+        }
+        addEventListener("resize", resize); resize()
+        const rnd = (n) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v) }
+
+        // ====================================================== 레벨 데이터
+        const grounds = [[-400, 880], [1030, 1800], [1950, 2500], [2660, 3500], [3650, 4400], [4560, 5300], [5450, 7300]]
+        const platforms = [[400, 340, 140], [1200, 330, 120], [1450, 300, 120], [2200, 340, 160], [2900, 330, 130], [3150, 300, 120],
+                           [3900, 340, 150], [4700, 330, 140], [5000, 300, 110], [5900, 340, 150]].map(([x, y, w]) => ({ x, y, w }))
+        const hazards = [[600, "rock"], [750, "thorn"], [1350, "rock"], [1600, "thorn"], [2300, "rock"], [2400, "thorn"], [3000, "rock"], [3300, "rock"],
+                         [3400, "thorn"], [4000, "rock"], [4200, "thorn"], [4900, "rock"], [5150, "thorn"], [5600, "rock"], [5800, "thorn"], [6200, "rock"], [6400, "thorn"]]
+            .map(([x, type]) => ({ x, type, w: type === "rock" ? 52 : 56, h: type === "rock" ? 38 : 38 }))
+        const surfaces = [...grounds.map(([a, b]) => ({ x0: a, x1: b, y: GY, ground: true })), ...platforms.map((p) => ({ x0: p.x, x1: p.x + p.w, y: p.y }))]
+
+        const TREASURES = [
+            { type: "camellia", x: 1260, y: 285, name: "동백꽃", fact: "동백꽃 — 겨울에 붉게 피는 꽃이에요. 선흘 곶자왈의 동백동산에서 큰 동백나무 숲을 볼 수 있어요." },
+            { type: "fern", x: 2965, y: 285, name: "고사리", fact: "고사리 — 돌 틈의 촉촉한 공기를 좋아해서 곶자왈 바닥을 푸르게 덮어요." },
+            { type: "mushroom", x: 3975, y: 295, name: "버섯", fact: "버섯 — 떨어진 낙엽을 분해해 숲에 영양분을 돌려주는 숲의 청소부예요." },
+            { type: "acorn", x: 5055, y: 255, name: "도토리", fact: "도토리 — 종가시나무 같은 참나뭇과 나무의 열매예요. 곶자왈에는 이런 늘푸른나무가 많아요." },
+        ]
+        let acorns = [], treasures = [], got = new Set()
+
+        const buildItems = () => {
+            acorns = []
+            for (const [a, b] of grounds) {
+                for (let x = Math.max(a, 120) + 110; x < Math.min(b, LEN) - 100; x += 150) {
+                    const near = hazards.some((h) => Math.abs(h.x - x) < 75)
+                    acorns.push({ x, y: near ? GY - 125 : GY - 55, taken: false, ph: rnd(x) * 6 })
+                }
+            }
+            for (let i = 0; i < grounds.length - 1; i++)
+                acorns.push({ x: (grounds[i][1] + grounds[i + 1][0]) / 2, y: GY - 150, taken: false, ph: i })
+            for (const p of platforms) for (const dx of [0.25, 0.5, 0.75]) acorns.push({ x: p.x + p.w * dx, y: p.y - 42, taken: false, ph: dx * 9 })
+            acorns = acorns.filter((a) => !TREASURES.some((t) => Math.hypot(t.x - a.x, t.y - a.y) < 36))
+            treasures = TREASURES.map((t) => ({ ...t, taken: false }))
+            got = new Set()
+        }
+
+        // ====================================================== 상태
+        const P = { x: START_X, y: GY, vx: 0, vy: 0, dir: 1, onGround: true, w: 30, h: 58, inv: 0, stun: 0, walk: 0, safeX: START_X, coyote: 0, buffer: 0 }
+        let state = "title", hearts = 3, maxHearts = 3, score = 0, camX = 0, time = 0, sparks = [], toastTimer = 0
+        const keys = {}, touch = { left: false, right: false, jump: false }
+        let jumpHeld = false
+
+        const reset = () => {
+            buildItems(); hearts = maxHearts; score = 0
+            Object.assign(P, { x: START_X, y: GY, vx: 0, vy: 0, dir: 1, onGround: true, inv: 0, stun: 0, walk: 0, safeX: START_X })
+            camX = 0
+        }
+        buildItems()
+
+        // ====================================================== 입력
+        addEventListener("keydown", (e) => {
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault()
+            if (e.repeat) return
+            keys[e.key.toLowerCase()] = true
+            if (["arrowup", " ", "w"].includes(e.key.toLowerCase())) { jumpHeld = true; P.buffer = 7 }
+            if (e.key === "Escape" || e.key.toLowerCase() === "p") togglePause()
+        })
+        addEventListener("keyup", (e) => {
+            keys[e.key.toLowerCase()] = false
+            if (["arrowup", " ", "w"].includes(e.key.toLowerCase())) jumpHeld = false
+        })
+        const hold = (id, k) => {
+            const el = document.getElementById(id)
+            const on = (v) => (ev) => { ev.preventDefault(); if (k === "jump") { jumpHeld = touch.jumpBtn = v; if (v) P.buffer = 7 } else touch[k] = v }
+            el.addEventListener("pointerdown", on(true)); el.addEventListener("pointerup", on(false))
+            el.addEventListener("pointerleave", on(false)); el.addEventListener("pointercancel", on(false))
+        }
+        hold("tJump", "jump")
+        // 방향 버튼: 누른 채 손가락을 좌우로 밀면 방향이 바뀌도록 패드 전체에서 위치로 판정
+        const dpad = document.getElementById("dpad"), tl = document.getElementById("tLeft"), tr = document.getElementById("tRight")
+        const dpadSet = (ev) => {
+            const r = dpad.getBoundingClientRect(), mid = r.left + r.width / 2
+            const inside = ev.clientX >= r.left - 30 && ev.clientX <= r.right + 30 && ev.clientY >= r.top - 40 && ev.clientY <= r.bottom + 40
+            touch.left = inside && ev.clientX < mid; touch.right = inside && ev.clientX >= mid
+        }
+        dpad.addEventListener("pointerdown", (ev) => { ev.preventDefault(); dpad.setPointerCapture(ev.pointerId); dpadSet(ev) })
+        dpad.addEventListener("pointermove", (ev) => { if (ev.buttons || ev.pressure > 0) dpadSet(ev) })
+        const dpadOff = () => { touch.left = touch.right = false }
+        dpad.addEventListener("pointerup", dpadOff); dpad.addEventListener("pointercancel", dpadOff)
+        dpad.addEventListener("lostpointercapture", dpadOff)
+        // 화면 아무 곳이나 탭하면 점프 (버튼 없이도 한 손 조작 가능)
+        cv.addEventListener("pointerdown", (ev) => { if (ev.pointerType !== "mouse" && state === "play") { jumpHeld = true; P.buffer = 7 } })
+        const tapEnd = () => { if (!touch.jumpBtn) jumpHeld = false }
+        cv.addEventListener("pointerup", tapEnd); cv.addEventListener("pointercancel", tapEnd)
+        if (matchMedia("(pointer: coarse)").matches || "ontouchstart" in window || innerWidth < 900) document.getElementById("touch").style.display = "block"
+
+        // ====================================================== UI
+        const $ = (id) => document.getElementById(id)
+        const toast = (msg, ms = 4200) => { const t = $("toast"); t.textContent = msg; t.classList.add("show"); toastTimer = ms; clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), ms) }
+        const showPanel = (html) => { $("card").innerHTML = html; $("panel").style.display = "flex" }
+        const hidePanel = () => { $("panel").style.display = "none" }
+        const startGame = () => {
+            reset(); state = "play"
+            $("title").style.display = "none"; $("about").style.display = "none"; $("topbtns").style.display = "flex"; hidePanel()
+            toast("← → 이동 · ↑ / Space 점프 (길게 누르면 더 높이!) · 도토리를 모으고 보물 4개를 찾아보세요", 5200)
+        }
+        const toTitle = () => {
+            reset(); state = "title"; hidePanel(); $("toast").classList.remove("show")
+            $("title").style.display = "flex"; $("about").style.display = "block"; $("topbtns").style.display = "none"
+        }
+        const togglePause = () => {
+            if (state === "play") { state = "pause"; showPanel(`<h2>일시정지</h2><button class="clay play" id="bResume">계속하기</button><button class="clay alt" id="bTitle">처음 화면</button>`)
+                $("bResume").onclick = togglePause; $("bTitle").onclick = toTitle }
+            else if (state === "pause") { state = "play"; hidePanel() }
+        }
+        const settings = () => {
+            showPanel(`<h2>Settings</h2>
+                <p>하트 개수</p><div class="row"><button class="clay alt pill ${maxHearts === 3 ? "on" : ""}" id="h3">3개</button><button class="clay alt pill ${maxHearts === 5 ? "on" : ""}" id="h5">5개 (쉬움)</button></div>
+                <p>조작: ← → 이동 · ↑ / Space 점프 (길게 누르면 높이 점프)<br>Esc 또는 P: 일시정지</p>
+                <button class="clay play" id="bBack">닫기</button>`)
+            $("h3").onclick = () => { maxHearts = 3; settings() }; $("h5").onclick = () => { maxHearts = 5; settings() }
+            $("bBack").onclick = hidePanel
+        }
+        $("btnPlay").onclick = startGame; $("btnSettings").onclick = settings; $("btnPause").onclick = togglePause
+        $("btnFull").onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.() }
+        const gameOver = () => {
+            state = "over"
+            showPanel(`<h2>쓰러졌어요…</h2><p>도토리 ${score}개 · 보물 ${got.size}/4<br>곶자왈 돌길은 험하지만 다시 도전해 봐요!</p><button class="clay play" id="bRetry">다시 도전</button><button class="clay alt" id="bTitle">처음 화면</button>`)
+            $("bRetry").onclick = startGame; $("bTitle").onclick = toTitle
+        }
+        const win = () => {
+            state = "win"
+            const names = TREASURES.filter((t) => got.has(t.type)).map((t) => t.name).join(", ") || "없음"
+            showPanel(`<h2>🌿 탐험 완료!</h2><p>도토리 ${score}개 · 보물 ${got.size}/4<br>찾은 보물: ${names}<br><br>곶자왈은 빗물을 땅속으로 보내 지하수를 채우는 제주의 허파 같은 숲이에요.</p><button class="clay play" id="bRetry">다시 탐험</button><button class="clay alt" id="bTitle">처음 화면</button>`)
+            $("bRetry").onclick = startGame; $("bTitle").onclick = toTitle
+        }
+
+        // ====================================================== 업데이트
+        const damage = () => {
+            if (P.inv > 0) return
+            hearts--; P.inv = 100; P.stun = 14; P.vx = -P.dir * 7; P.vy = -9; P.onGround = false
+            for (let i = 0; i < 8; i++) sparks.push({ x: P.x, y: P.y - 30, vx: (Math.random() - .5) * 6, vy: -Math.random() * 5, life: 30, c: "#ff7a4a" })
+            if (hearts <= 0) gameOver()
+        }
+        const update = () => {
+            time++
+            const left = keys.arrowleft || keys.a || touch.left, right = keys.arrowright || keys.d || touch.right
+            const ax = P.stun > 0 ? 0 : (right ? 1 : 0) - (left ? 1 : 0)
+            if (P.stun > 0) P.stun--
+            else { P.vx += (ax * 4.4 - P.vx) * 0.25; if (ax) P.dir = ax }
+            if (P.buffer > 0) P.buffer--
+            P.coyote = P.onGround ? 7 : Math.max(0, P.coyote - 1)
+            if (P.buffer > 0 && P.coyote > 0) { P.vy = -13.5; P.onGround = false; P.coyote = 0; P.buffer = 0 }
+            P.vy = Math.min(18, P.vy + (jumpHeld && P.vy < 0 ? 0.45 : 0.85))
+            P.x = Math.max(-380, P.x + P.vx)
+            const prev = P.y; P.y += P.vy; P.onGround = false
+            if (P.vy >= 0) for (const s of surfaces) {
+                if (P.x + P.w / 2 > s.x0 && P.x - P.w / 2 < s.x1 && prev <= s.y + 4 && P.y >= s.y) {
+                    P.y = s.y; P.vy = 0; P.onGround = true
+                    if (s.ground && P.x > s.x0 + 70 && P.x < s.x1 - 70) P.safeX = P.x
+                }
+            }
+            if (P.onGround && Math.abs(P.vx) > 0.5) P.walk += Math.abs(P.vx) * 0.09
+            if (P.inv > 0) P.inv--
+            if (P.y > H + 140) {                                  // 절벽(숨골)에 떨어짐
+                hearts--
+                if (hearts <= 0) { gameOver(); return }
+                P.x = P.safeX; P.y = GY; P.vx = P.vy = 0; P.inv = 100
+            }
+            const body = { x: P.x - 12, y: P.y - P.h + 6, w: 24, h: P.h - 8 }
+            for (const h of hazards) {
+                const r = { x: h.x - h.w / 2 + 8, y: GY - h.h + 8, w: h.w - 16, h: h.h - 8 }
+                if (body.x < r.x + r.w && body.x + body.w > r.x && body.y < r.y + r.h && body.y + body.h > r.y) damage()
+            }
+            for (const a of acorns) if (!a.taken && Math.hypot(a.x - P.x, a.y - (P.y - 30)) < 30) {
+                a.taken = true; score++
+                for (let i = 0; i < 5; i++) sparks.push({ x: a.x, y: a.y, vx: (Math.random() - .5) * 4, vy: -Math.random() * 4, life: 24, c: "#ffd45a" })
+            }
+            for (const t of treasures) if (!t.taken && Math.hypot(t.x - P.x, t.y - (P.y - 30)) < 36) {
+                t.taken = true; got.add(t.type); toast(t.fact, 5200)
+                for (let i = 0; i < 14; i++) sparks.push({ x: t.x, y: t.y, vx: (Math.random() - .5) * 8, vy: -Math.random() * 7, life: 40, c: "#fff3a0" })
+            }
+            for (const s of sparks) { s.x += s.vx; s.y += s.vy; s.vy += 0.3; s.life-- }
+            sparks = sparks.filter((s) => s.life > 0)
+            if (P.x > GOAL) win()
+        }
+
+        // ====================================================== 점토 느낌 그리기 도구
+        const grad = (x, y, r, light, base, dark) => {
+            const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r * 1.1)
+            g.addColorStop(0, light); g.addColorStop(0.55, base); g.addColorStop(1, dark); return g
+        }
+        const blob = (x, y, rx, ry, light, base, dark) => {
+            ctx.fillStyle = grad(x, y, Math.max(rx, ry), light, base, dark)
+            ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill()
+        }
+        const rrect = (x, y, w, h, r, light, base, dark) => {
+            ctx.fillStyle = grad(x + w / 2, y + h / 2, Math.max(w, h) / 1.6, light, base, dark)
+            ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill()
+        }
+        const GREEN = ["#b6e47a", "#6fb34a", "#3f7f31"], DEEP = ["#8cc37a", "#4f9a46", "#2d6a33"], HAZE = ["#cfe6d2", "#a8cdb0", "#8bb79a"]
+        const BROWN = ["#b98a62", "#8a5a3a", "#5a3822"], ROCK = ["#9a8574", "#6e5a4c", "#43362d"], CLOUD = ["#fffdf8", "#e8e2d8", "#bdb5a8"]
+
+        // 아이콘들
+        const drawAcorn = (x, y, s) => {
+            blob(x, y + s * 0.15, s * 0.62, s * 0.8, "#e8b070", "#b9763a", "#7a4a22")
+            blob(x, y - s * 0.4, s * 0.78, s * 0.42, "#a8794e", "#7a5232", "#4d321d")
+            ctx.fillStyle = "#4d321d"; ctx.fillRect(x - s * 0.06, y - s * 0.95, s * 0.12, s * 0.3)
+        }
+        const drawCamellia = (x, y, s) => {
+            for (let i = 0; i < 5; i++) { const a = i * 1.2566; blob(x + Math.cos(a) * s * 0.5, y + Math.sin(a) * s * 0.5, s * 0.5, s * 0.5, "#ff7a7a", "#d8262e", "#8f1018") }
+            blob(x, y, s * 0.32, s * 0.32, "#fff3a0", "#ffc83a", "#d8962a")
+        }
+        const drawFern = (x, y, s) => {
+            ctx.lineCap = "round"
+            for (const [a, c] of [[-0.9, "#5aa84a"], [-0.3, "#6fc05a"], [0.3, "#6fc05a"], [0.9, "#5aa84a"]]) {
+                ctx.strokeStyle = c; ctx.lineWidth = s * 0.28
+                ctx.beginPath(); ctx.moveTo(x, y + s * 0.6); ctx.quadraticCurveTo(x + Math.sin(a) * s * 0.9, y - s * 0.2, x + Math.sin(a) * s * 1.1, y - s * 0.6 - Math.abs(a) * 4); ctx.stroke()
+            }
+        }
+        const drawMushroom = (x, y, s) => {
+            rrect(x - s * 0.22, y, s * 0.44, s * 0.7, s * 0.2, "#fffaf0", "#efe3cc", "#c9b898")
+            blob(x, y, s * 0.8, s * 0.55, "#ff8a6a", "#e03a2e", "#9a1a14")
+            ctx.fillStyle = "rgba(255,255,255,.9)"; for (const [dx, dy] of [[-0.35, -0.1], [0.1, -0.3], [0.4, 0.05]]) { ctx.beginPath(); ctx.arc(x + dx * s, y + dy * s, s * 0.12, 0, 7); ctx.fill() }
+        }
+        const drawIcon = { acorn: drawAcorn, camellia: drawCamellia, fern: drawFern, mushroom: drawMushroom }
+        const drawHeart = (x, y, s, full) => {
+            ctx.save(); ctx.globalAlpha = full ? 1 : 0.28
+            const g = ctx.createRadialGradient(x - s * .3, y - s * .3, s * .1, x, y, s * 1.2); g.addColorStop(0, "#ff9a6a"); g.addColorStop(0.6, "#e8481f"); g.addColorStop(1, "#a82a10")
+            ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x, y + s * 0.95)
+            ctx.bezierCurveTo(x - s * 1.2, y + s * 0.2, x - s * 0.8, y - s * 0.8, x, y - s * 0.2)
+            ctx.bezierCurveTo(x + s * 0.8, y - s * 0.8, x + s * 1.2, y + s * 0.2, x, y + s * 0.95); ctx.fill()
+            ctx.fillStyle = "rgba(255,255,255,.4)"; ctx.beginPath(); ctx.ellipse(x - s * 0.45, y - s * 0.2, s * 0.18, s * 0.28, -0.6, 0, 7); ctx.fill()
+            ctx.restore()
+        }
+
+        // 캐릭터 (갈색 머리, 노란 재킷, 배낭)
+        const drawHero = (x, y, dir, walk, moving, air) => {
+            ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1)
+            const sw = moving ? Math.sin(walk) * 6 : 0, bob = moving ? Math.abs(Math.sin(walk)) * 2 : 0
+            blob(-12, -32 - bob, 11, 14, "#a07850", "#7a5232", "#4d321d")                   // 배낭
+            rrect(-12 + (air ? 0 : sw), -12, 10, 13, 5, "#8a6a4a", "#5a4630", "#33281a")     // 다리
+            rrect(2 - (air ? 0 : sw), -12, 10, 13, 5, "#8a6a4a", "#5a4630", "#33281a")
+            blob(-5 + (air ? 0 : sw), -1, 8, 4.5, "#8a5a3a", "#5a3822", "#33200f")           // 신발
+            blob(7 - (air ? 0 : sw), -1, 8, 4.5, "#8a5a3a", "#5a3822", "#33200f")
+            rrect(-14, -42 - bob, 28, 32, 12, "#ffe58a", "#f2c53a", "#c99a1a")               // 재킷
+            blob(0, -52 - bob, 15, 14, "#ffe0c0", "#f2b98a", "#c98a5a")                      // 얼굴
+            for (const [dx, dy, r] of [[-9, -62, 9], [0, -66, 10], [9, -62, 9], [-13, -54, 6], [12, -56, 6]]) blob(dx, dy - bob, r, r, "#a07850", "#7a5232", "#4d321d")   // 머리카락
+            ctx.fillStyle = "#3a2414"; ctx.beginPath(); ctx.arc(5, -52 - bob, 2, 0, 7); ctx.arc(-3, -52 - bob, 2, 0, 7); ctx.fill()
+            ctx.fillStyle = "rgba(255,120,110,.5)"; ctx.beginPath(); ctx.arc(9, -47 - bob, 3, 0, 7); ctx.fill()
+            ctx.restore()
+        }
+
+        const tree = (sx, base, sc, pal, trunk) => {
+            if (trunk) rrect(sx - 13 * sc, base - 150 * sc, 26 * sc, 150 * sc, 10 * sc, ...BROWN)
+            blob(sx - 55 * sc, base - 170 * sc, 70 * sc, 56 * sc, ...pal)
+            blob(sx + 55 * sc, base - 165 * sc, 70 * sc, 56 * sc, ...pal)
+            blob(sx, base - 205 * sc, 82 * sc, 66 * sc, ...pal)
+            blob(sx - 10 * sc, base - 150 * sc, 78 * sc, 48 * sc, ...pal)
+        }
+        const cloud = (x, y, s) => {
+            for (const [dx, dy, r] of [[0, 0, 30], [34, -14, 38], [76, -2, 32], [38, 8, 34], [-18, 10, 20], [96, 10, 20]]) blob(x + dx * s, y + dy * s, r * s, r * s * 0.9, ...CLOUD)
+        }
+        const fernDecor = (x, sway) => {
+            for (let k = -2; k <= 2; k++) {
+                ctx.save(); ctx.translate(x, GY - 2); ctx.rotate(k * 0.34 + sway * 0.04)
+                blob(0, -24, 7, 26, "#a8e07a", "#5faa42", "#356f2b"); ctx.restore()
+            }
+        }
+
+        // ====================================================== 장면 그리기
+        const drawScene = () => {
+            ctx.setTransform(S * DPR, 0, 0, S * DPR, 0, 0)
+            const sky = ctx.createLinearGradient(0, 0, 0, VH)
+            sky.addColorStop(0, "#6aaee6"); sky.addColorStop(0.55, "#a9cde8"); sky.addColorStop(1, "#dcebe6")
+            ctx.fillStyle = sky; ctx.fillRect(0, 0, W, VH)
+            ctx.translate(0, VH - H)
+
+            blob(W * 0.74, 120, 70, 70, "#fff6cc", "#ffe49a", "rgba(255,228,154,0)")                     // 해
+            for (const [bx, by, sc] of [[60, 70, 0.9], [420, 130, 0.7], [760, 50, 1.0], [1100, 110, 0.8], [1380, 60, 0.9]]) {
+                const x = ((bx - camX * 0.1 - time * 0.12) % 1500 + 1500) % 1500 - 160
+                cloud(x, by, sc)
+            }
+            // 한라산과 오름 실루엣
+            ctx.fillStyle = "rgba(122, 164, 190, 0.7)"; ctx.beginPath(); ctx.moveTo(-10, H)
+            for (let sx = -10; sx <= W + 10; sx += 8) {
+                const m = ((sx + camX * 0.1) % 2200 + 2200) % 2200
+                const y = GY - 40 - 170 * Math.exp(-(((m - 1000) / 380) ** 2)) - 45 * Math.exp(-(((m - 300) / 220) ** 2)) - 35 * Math.exp(-(((m - 1750) / 200) ** 2))
+                ctx.lineTo(sx, y)
+            }
+            ctx.lineTo(W + 10, H); ctx.fill()
+            // 먼 숲 · 가까운 숲
+            for (const [p, gap, sc, pal, trunk, off] of [[0.3, 250, 0.55, HAZE, false, 120], [0.55, 400, 0.85, DEEP, true, 160]]) {
+                for (let i = Math.floor((camX * p - 200) / gap); i < (camX * p + W + 200) / gap; i++) {
+                    const sx = i * gap + rnd(i + p * 9) * 90 - camX * p
+                    tree(sx, GY - 8 + off * 0.0, sc * (0.85 + rnd(i * 3) * 0.4), pal, trunk)
+                }
+            }
+            ctx.save(); ctx.translate(-camX, 0)
+            // 구덩이(숨골)
+            for (let i = 0; i < grounds.length - 1; i++) {
+                const a = grounds[i][1], b = grounds[i + 1][0]
+                const g = ctx.createLinearGradient(0, GY, 0, H + 80); g.addColorStop(0, "#35503a"); g.addColorStop(1, "#0e1a12")
+                ctx.fillStyle = g; ctx.fillRect(a, GY, b - a, H - GY + 100)
+            }
+            // 땅: 현무암 블록 + 이끼 윗면
+            for (const [a, b] of grounds) {
+                const x0 = Math.max(a, Math.floor(camX / 90) * 90 - 90), x1 = Math.min(b, camX + W + 90)
+                for (let x = Math.ceil(x0 / 90) * 90; x < x1; x += 90) {
+                    for (let r = 0; r < 2; r++) {
+                        const k = x / 90 * 7 + r * 3, bx = Math.max(x, a), bw = Math.min(x + 90, b) - bx
+                        if (bw <= 0) continue
+                        const t = rnd(k)
+                        rrect(bx + 2, GY + 10 + r * 62, bw - 4, 60, 12, t > .5 ? "#b08a6a" : "#9a8574", t > .5 ? "#86604a" : "#6e5a4c", t > .5 ? "#5a3e2c" : "#43362d")
+                    }
+                }
+                rrect(a, GY - 8, b - a, 26, 12, "#a8e07a", "#6fb34a", "#3f7f31")
+                for (let x = Math.ceil(Math.max(a, camX - 40) / 26) * 26; x < Math.min(b, camX + W + 40); x += 26) blob(x, GY + 14, 14, 9, "#a8e07a", "#6fb34a", "#3f7f31")
+            }
+            for (const p of platforms) {
+                if (p.x > camX + W + 50 || p.x + p.w < camX - 50) continue
+                rrect(p.x, p.y + 2, p.w, 32, 14, ...ROCK)
+                rrect(p.x - 4, p.y - 8, p.w + 8, 20, 10, "#a8e07a", "#6fb34a", "#3f7f31")
+            }
+            // 양치식물 장식
+            for (let x = 160; x < LEN; x += 210 + rnd(x) * 60) {
+                if (!grounds.some(([a, b]) => x > a + 20 && x < b - 20) || hazards.some((h) => Math.abs(h.x - x) < 70)) continue
+                if (x < camX - 60 || x > camX + W + 60) continue
+                fernDecor(x, Math.sin(time * 0.03 + x))
+            }
+            // 장애물: 용암돌, 가시덤불
+            for (const h of hazards) {
+                if (h.x < camX - 80 || h.x > camX + W + 80) continue
+                if (h.type === "rock") {
+                    blob(h.x - 12, GY - 14, 22, 18, ...ROCK); blob(h.x + 10, GY - 17, 24, 22, "#a8928a", "#7a655a", "#4a3a32"); blob(h.x, GY - 24, 18, 14, "#b8a090", "#86705f", "#574538")
+                } else {
+                    for (const [dx, dy, r] of [[-14, -14, 15], [0, -22, 18], [14, -14, 15]]) blob(h.x + dx, GY + dy, r, r, "#6f9f4a", "#3f6f32", "#1f3f1f")
+                    ctx.fillStyle = "#e8d8a0"
+                    for (let i = 0; i < 9; i++) { const a = -Math.PI + i * (Math.PI / 8); const bx = h.x + Math.cos(a) * 20, by = GY - 20 + Math.sin(a) * 18
+                        ctx.beginPath(); ctx.moveTo(bx - 2, by + 2); ctx.lineTo(bx + Math.cos(a) * 9, by + Math.sin(a) * 9); ctx.lineTo(bx + 2, by + 2); ctx.fill() }
+                }
+            }
+            // 시작 깃발 · 도착 깃발
+            for (const fx of [START_X + 180, GOAL]) {
+                rrect(fx - 5, GY - 150, 10, 150, 4, "#8a5a3a", "#5a3822", "#33200f")
+                ctx.fillStyle = grad(fx + 30, GY - 130, 40, "#ff9a55", "#e8641f", "#b0400f")
+                ctx.beginPath(); ctx.moveTo(fx + 5, GY - 148); ctx.quadraticCurveTo(fx + 40, GY - 140 + Math.sin(time * 0.08) * 4, fx + 62, GY - 118); ctx.quadraticCurveTo(fx + 36, GY - 104, fx + 5, GY - 100); ctx.fill()
+            }
+            // 아이템
+            for (const a of acorns) if (!a.taken && a.x > camX - 40 && a.x < camX + W + 40) drawAcorn(a.x, a.y + Math.sin(time * 0.06 + a.ph) * 4, 11)
+            for (const t of treasures) if (!t.taken) {
+                const by = t.y + Math.sin(time * 0.05 + t.x) * 5
+                blob(t.x, by, 30, 30, "rgba(255,243,160,.6)", "rgba(255,243,160,.25)", "rgba(255,243,160,0)")
+                drawIcon[t.type](t.x, by, 22)
+            }
+            // 플레이어
+            if (P.inv <= 0 || Math.floor(P.inv / 4) % 2) drawHero(P.x, P.y, P.dir, P.walk, Math.abs(P.vx) > 0.5 && P.onGround, !P.onGround)
+            for (const s of sparks) { ctx.fillStyle = s.c; ctx.globalAlpha = Math.min(1, s.life / 20); ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, 7); ctx.fill(); ctx.globalAlpha = 1 }
+            ctx.restore()
+
+            // 앞쪽 덩굴 (시차)
+            for (let i = 0; i < 6; i++) {
+                const sx = ((i * 330 + 90 - camX * 1.25) % 1980 + 1980) % 1980 - 200, len = 70 + rnd(i) * 90, top = -(VH - H)
+                ctx.strokeStyle = "#3f7f31"; ctx.lineWidth = 7; ctx.lineCap = "round"
+                ctx.beginPath(); ctx.moveTo(sx, top); ctx.quadraticCurveTo(sx + 16 * Math.sin(time * 0.02 + i), top + len / 2, sx - 4, top + len + 10); ctx.stroke()
+                blob(sx - 4, top + len + 12, 9, 12, "#a8e07a", "#6fb34a", "#3f7f31")
+            }
+            ctx.setTransform(S * DPR, 0, 0, S * DPR, 0, 0)
+        }
+
+        const drawHud = () => {
+            ctx.setTransform(S * DPR, 0, 0, S * DPR, 0, 0)
+            for (let i = 0; i < maxHearts; i++) drawHeart(34 + i * 36, 36, 14, i < hearts)
+            blob(W / 2 - 26, 34, 18, 18, "#fff3c0", "#f2c53a", "#c99a1a"); drawAcorn(W / 2 - 26, 34, 9)
+            ctx.fillStyle = "#fff"; ctx.strokeStyle = "rgba(60,40,20,.7)"; ctx.lineWidth = 4; ctx.font = "900 22px 'Trebuchet MS', sans-serif"; ctx.textAlign = "left"
+            ctx.strokeText(String(score), W / 2 - 2, 42); ctx.fillText(String(score), W / 2 - 2, 42)
+            TREASURES.forEach((t, i) => {
+                const x = W / 2 - 66 + i * 44, y = 76, have = got.has(t.type)
+                blob(x, y, 18, 18, "#fff7e0", have ? "#ffe9a8" : "#d8cdb8", have ? "#e8b84a" : "#9a8f7a")
+                ctx.save(); ctx.globalAlpha = have ? 1 : 0.28; drawIcon[t.type](x, y, 11); ctx.restore()
+            })
+            // 진행도
+            const prog = Math.max(0, Math.min(1, (P.x - START_X) / (GOAL - START_X)))
+            rrect(W / 2 - 100, 104, 200, 8, 4, "#fff", "#e8e0d0", "#b8ad98"); rrect(W / 2 - 100, 104, 8 + 192 * prog, 8, 4, ...GREEN)
+        }
+
+        // ====================================================== 메인 루프
+        let last = performance.now(), acc = 0
+        const loop = (now) => {
+            acc += Math.min(100, now - last); last = now
+            while (acc >= 1000 / 60) { acc -= 1000 / 60; if (state === "play") update(); else time++ }
+            const target = state === "title" ? 0 : Math.max(-120, Math.min(LEN - W + 150, P.x - W * 0.36))
+            camX += (target - camX) * 0.12
+            drawScene()
+            if (state !== "title") drawHud()
+            requestAnimationFrame(loop)
+        }
+        requestAnimationFrame(loop)
+    </script>
+</body>
+</html>
